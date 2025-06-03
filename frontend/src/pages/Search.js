@@ -1,29 +1,32 @@
 import React, { useState } from 'react';
 import axios from 'axios';
-import PaperCard from '../components/PaperCard';
+import ArxivCard from '../components/ArxivCard';
 
 const Search = () => {
   const [yearFilter, setYearFilter] = useState('');
   const [keywords, setKeywords] = useState('');
-  const [papers, setPapers] = useState([]);
+  const [arxiv, setArxiv] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [summary, setSummary] = useState('');
 
   const handleSearch = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError('');
+    setSummary('');
 
     try {
       const response = await axios.post(`${process.env.REACT_APP_API_URL}/chat`, {
-        query: 'search papers',
+        query: 'search arxiv',
         year_filter: yearFilter ? parseInt(yearFilter) : null,
         keywords: keywords ? keywords.split(',').map(k => k.trim()) : null
       });
 
-      setPapers(response.data.papers);
+      setArxiv(response.data.arxiv || []);
+      setSummary(response.data.response || '');
     } catch (err) {
-      setError('Failed to fetch papers. Please try again.');
+      setError('Failed to fetch arxiv papers. Please try again.');
       console.error('Search error:', err);
     } finally {
       setLoading(false);
@@ -34,9 +37,9 @@ const Search = () => {
     <div className="space-y-6">
       <div className="bg-white shadow sm:rounded-lg">
         <div className="px-4 py-5 sm:p-6">
-          <h3 className="text-lg font-medium leading-6 text-gray-900">Search Papers</h3>
+          <h3 className="text-lg font-medium leading-6 text-gray-900">Search ArXiv Papers</h3>
           <div className="mt-2 max-w-xl text-sm text-gray-500">
-            <p>Use filters to find relevant academic papers.</p>
+            <p>Use filters to find relevant academic papers from ArXiv.</p>
           </div>
           <form onSubmit={handleSearch} className="mt-5 space-y-4">
             <div>
@@ -88,9 +91,16 @@ const Search = () => {
         </div>
       )}
 
+      {summary && (
+        <div className="bg-white shadow sm:rounded-lg p-4">
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Summary</h3>
+          <p className="text-gray-700">{summary}</p>
+        </div>
+      )}
+
       <div className="space-y-4">
-        {papers.map((paper) => (
-          <PaperCard key={paper.title} paper={paper} />
+        {arxiv.map((item, index) => (
+          <ArxivCard key={index} arxiv={item} />
         ))}
       </div>
     </div>

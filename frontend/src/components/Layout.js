@@ -1,29 +1,38 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { ChatBubbleLeftRightIcon, MagnifyingGlassIcon, HomeIcon } from '@heroicons/react/24/outline';
+import { ChatBubbleLeftRightIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
+
+const navigation = [
+  {
+    name: 'Chat',
+    href: '/chat',
+    icon: ChatBubbleLeftRightIcon,
+  },
+  {
+    name: 'Search',
+    href: '/search',
+    icon: MagnifyingGlassIcon,
+  },
+];
 
 const Layout = ({ children }) => {
   const location = useLocation();
 
-  const navigation = [
-    { name: 'Home', href: '/', icon: HomeIcon },
-    { name: 'Chat', href: '/chat', icon: ChatBubbleLeftRightIcon },
-    { name: 'Search Papers', href: '/search', icon: MagnifyingGlassIcon },
-  ];
-
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-100">
       {/* Navigation */}
       <nav className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             <div className="flex">
               <div className="flex-shrink-0 flex items-center">
-                <h1 className="text-xl font-bold text-indigo-600">Research Assistant</h1>
+                <Link to="/" className="text-xl font-bold text-indigo-600">
+                  Research Assistant
+                </Link>
               </div>
               <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
                 {navigation.map((item) => {
-                  const isActive = location.pathname === item.href;
+                  const isActive = location.pathname.startsWith(item.href);
                   return (
                     <Link
                       key={item.name}
@@ -69,7 +78,7 @@ const Layout = ({ children }) => {
       </div>
 
       {/* Main content */}
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+      <main className="h-[calc(100vh-4rem)]">
         {children}
       </main>
     </div>

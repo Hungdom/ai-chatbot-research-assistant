@@ -1,54 +1,50 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import Dict, Any, Optional, List
 import os
 from dotenv import load_dotenv
-import openai
-from sqlalchemy import create_engine, Column, Integer, String, Text, ARRAY, text
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
 import logging
+import uvicorn
+from database import get_db, Base, engine, ChatSession
+from agents.chat_agent import ChatAgent
+import uuid
+from datetime import datetime
+from sqlalchemy.orm import Session
+import json
+from contextlib import contextmanager
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+
+# Set uvicorn access log format
+log_config = uvicorn.config.LOGGING_CONFIG
+log_config["formatters"]["access"]["fmt"] = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+log_config["formatters"]["default"]["fmt"] = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+
 logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_dotenv()
 
 # Initialize FastAPI app
-app = FastAPI(title="Research Assistant API")
+app = FastAPI(title="Research Assistant Chatbot API")
 
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["*"],  # In production, replace with specific origins
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # Database setup
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@postgres_db:5432/research_db")
-logger.info(f"Connecting to database: {DATABASE_URL}")
-
 try:
-    engine = create_engine(DATABASE_URL)
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    Base = declarative_base()
-
-    # Models
-    class Paper(Base):
-        __tablename__ = "papers"
-        
-        id = Column(Integer, primary_key=True, index=True)
-        title = Column(String, index=True)
-        abstract = Column(Text)
-        authors = Column(ARRAY(String))
-        keywords = Column(ARRAY(String))
-        year = Column(Integer)
-
     # Create tables
     Base.metadata.create_all(bind=engine)
     logger.info("Database tables created successfully")
@@ -56,94 +52,231 @@ except Exception as e:
     logger.error(f"Database connection error: {str(e)}")
     raise
 
-# Pydantic models for request/response
+# Initialize chat agent
+chat_agent = ChatAgent()
+
+# Request/Response Models
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+    html_content: Optional[str] = None  # Add HTML content field
+    timestamp: str
+
 class ChatRequest(BaseModel):
     query: str
-    year_filter: Optional[int] = None
-    keywords: Optional[List[str]] = None
+    session_id: Optional[str] = None
+    context: Optional[Dict[str, Any]] = None
 
 class ChatResponse(BaseModel):
     response: str
-    papers: List[dict]
+    html_response: Optional[str] = None
+    arxiv: Optional[List[Dict[str, Any]]] = None
+    intent: Optional[Dict[str, Any]] = None
+    session_id: str
 
-# Initialize OpenAI
-openai_api_key = os.getenv("OPENAI_API_KEY")
-if not openai_api_key:
-    logger.error("OPENAI_API_KEY not found in environment variables")
-    raise ValueError("OPENAI_API_KEY environment variable is required")
+class SessionResponse(BaseModel):
+    session_id: str
+    messages: List[ChatMessage]
+    context: Optional[Dict[str, Any]] = None
+    created_at: datetime
+    updated_at: datetime
 
-openai.api_key = openai_api_key
-logger.info("OpenAI API configured successfully")
-
-@app.post("/chat", response_model=ChatResponse)
+# API Endpoints
+@app.post("/api/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
+    """
+    Process a chat message and return a response.
+    """
     try:
-        logger.info(f"Received chat request: {request.query}")
-        
-        # Get database session
-        db = SessionLocal()
-        
-        try:
-            # Query papers (basic implementation - can be enhanced with semantic search)
-            papers_query = db.query(Paper)
-            
-            # Apply year filter if provided
-            if request.year_filter:
-                papers_query = papers_query.filter(Paper.year == request.year_filter)
-            
-            # Apply keywords filter if provided
-            if request.keywords:
-                # Use PostgreSQL's && operator for array overlap
-                papers_query = papers_query.filter(
-                    Paper.keywords.op('&&')(request.keywords)
+        # Get or create session
+        with get_db() as db:
+            if request.session_id:
+                session = db.query(ChatSession).filter(ChatSession.session_id == request.session_id).first()
+            else:
+                session = None
+
+            if not session:
+                session = ChatSession(
+                    session_id=str(uuid.uuid4()),
+                    messages=[],
+                    context={}
                 )
-            
-            papers = papers_query.all()
-            logger.info(f"Found {len(papers)} relevant papers")
-            
-            # If no papers found, return a default response
-            if not papers:
-                return ChatResponse(
-                    response="I couldn't find any papers matching your criteria. Try adjusting your filters or asking a different question.",
-                    papers=[]
-                )
-            
-            # Prepare context for GPT
-            context = "\n".join([
-                f"Title: {paper.title}\nAbstract: {paper.abstract}\nAuthors: {', '.join(paper.authors)}\n"
-                for paper in papers[:5]  # Limit to top 5 papers for context
-            ])
-            
-            # Call OpenAI API
-            response = openai.ChatCompletion.create(
-                model="gpt-4",
-                messages=[
-                    {"role": "system", "content": "You are a helpful research assistant. Use the provided paper information to answer the user's query."},
-                    {"role": "user", "content": f"Query: {request.query}\n\nRelevant papers:\n{context}"}
-                ]
+                db.add(session)
+                db.commit()
+                logger.info(f"Created new session: {session.session_id}")
+
+            # Process the chat request
+            response_data = await chat_agent.process({
+                "query": request.query,
+                "session_id": session.session_id,
+                "context": session.context
+            })
+
+            # Create response message with timestamp
+            current_time = datetime.utcnow().isoformat()
+            response_message = ChatMessage(
+                role="assistant",
+                content=response_data.get("response", ""),
+                html_content=response_data.get("html_response", response_data.get("response", "")),
+                timestamp=current_time
             )
-            
+
+            # Update session messages
+            if isinstance(session.messages, str):
+                messages = json.loads(session.messages)
+            else:
+                messages = session.messages or []
+
+            # Add user message with timestamp
+            user_message = {
+                "role": "user",
+                "content": request.query,
+                "timestamp": current_time
+            }
+            messages.append(user_message)
+
+            # Add assistant response
+            messages.append(response_message.dict())
+
+            # Update session
+            session.messages = messages
+            session.context = {
+                **(session.context or {}),
+                "arxiv": response_data.get("arxiv", []),
+                "intent": response_data.get("intent", {})
+            }
+            session.updated_at = datetime.utcnow()
+            db.commit()
+            logger.info(f"Updated session {session.session_id} with new messages")
+
             return ChatResponse(
-                response=response.choices[0].message.content,
-                papers=[{
-                    "title": paper.title,
-                    "abstract": paper.abstract,
-                    "authors": paper.authors,
-                    "year": paper.year,
-                    "keywords": paper.keywords
-                } for paper in papers]
+                response=response_data.get("response", ""),
+                html_response=response_data.get("html_response", ""),
+                arxiv=response_data.get("arxiv", []),
+                intent=response_data.get("intent", {}),
+                session_id=session.session_id
             )
-            
-        except Exception as e:
-            logger.error(f"Error processing request: {str(e)}")
-            raise HTTPException(status_code=500, detail=str(e))
-        finally:
-            db.close()
-            
     except Exception as e:
-        logger.error(f"Unexpected error: {str(e)}")
+        logger.error(f"Error processing chat request: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/sessions", response_model=List[SessionResponse])
+async def get_sessions():
+    """List all chat sessions."""
+    try:
+        with get_db() as db:
+            sessions = db.query(ChatSession).order_by(ChatSession.updated_at.desc()).all()
+            logger.info(f"Retrieved {len(sessions)} sessions")
+            
+            # Process sessions to ensure all messages have timestamps
+            processed_sessions = []
+            for session in sessions:
+                messages = session.messages or []
+                # Ensure all messages have timestamps
+                processed_messages = []
+                for msg in messages:
+                    if isinstance(msg, dict):
+                        if 'timestamp' not in msg:
+                            msg['timestamp'] = datetime.utcnow().isoformat()
+                        processed_messages.append(msg)
+                
+                processed_sessions.append({
+                    "session_id": session.session_id,
+                    "messages": processed_messages,
+                    "context": session.context or {},
+                    "created_at": session.created_at.isoformat() if session.created_at else None,
+                    "updated_at": session.updated_at.isoformat() if session.updated_at else None
+                })
+            
+            return processed_sessions
+    except Exception as e:
+        logger.error(f"Error listing sessions: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/sessions/{session_id}", response_model=SessionResponse)
+async def get_session(session_id: str):
+    """Get a chat session by ID."""
+    try:
+        with get_db() as db:
+            session = db.query(ChatSession).filter(ChatSession.session_id == session_id).first()
+            if not session:
+                raise HTTPException(status_code=404, detail="Session not found")
+            
+            # Convert messages to list if they're stored as JSON string
+            if isinstance(session.messages, str):
+                messages = json.loads(session.messages)
+            else:
+                messages = session.messages or []
+            
+            # Ensure all messages have timestamps
+            processed_messages = []
+            for msg in messages:
+                if isinstance(msg, dict):
+                    if 'timestamp' not in msg:
+                        msg['timestamp'] = datetime.utcnow().isoformat()
+                    processed_messages.append(msg)
+            
+            return {
+                "session_id": session.session_id,
+                "messages": processed_messages,
+                "context": session.context or {},
+                "created_at": session.created_at.isoformat() if session.created_at else None,
+                "updated_at": session.updated_at.isoformat() if session.updated_at else None
+            }
+    except Exception as e:
+        logger.error(f"Error retrieving session: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/sessions/{session_id}", response_model=Dict[str, str])
+async def delete_session(session_id: str):
+    """Delete a chat session."""
+    try:
+        with get_db() as db:
+            session = db.query(ChatSession).filter(ChatSession.session_id == session_id).first()
+            if session:
+                db.delete(session)
+                db.commit()
+                return {"message": "Session deleted successfully"}
+            raise HTTPException(status_code=404, detail="Session not found")
+    except Exception as e:
+        logger.error(f"Error deleting session: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/api/sessions/{session_id}")
+async def update_session(session_id: str, session_data: dict):
+    try:
+        with get_db() as db:
+            session = db.query(ChatSession).filter(ChatSession.session_id == session_id).first()
+            if not session:
+                raise HTTPException(status_code=404, detail="Session not found")
+            
+            # Update session data
+            if "messages" in session_data:
+                session.messages = session_data["messages"]
+            if "context" in session_data:
+                session.context = session_data["context"]
+            
+            # Update timestamp
+            session.updated_at = datetime.utcnow()
+            
+            # Commit changes
+            db.commit()
+            logger.info(f"Updated session {session_id} with new messages")
+            
+            return {"status": "success", "message": "Session updated successfully"}
+    except Exception as e:
+        logger.error(f"Error updating session: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/health")
+async def health_check():
+    """Check if the API is healthy."""
+    return {"status": "healthy"}
 
 @app.get("/")
 async def root():
-    return {"message": "Research Assistant API is running"} 
+    """Root endpoint."""
+    return {"message": "Research Assistant Chatbot API is running"}
+
+if __name__ == "__main__":
+    uvicorn.run("main:app", host="0.0.0.0", port=8001, reload=True) 

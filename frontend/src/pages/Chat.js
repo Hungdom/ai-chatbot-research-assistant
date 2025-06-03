@@ -1,16 +1,17 @@
-import React, { useState, useRef, useEffect } from 'react';
-import axios from 'axios';
+import React, { useState, useEffect, useRef } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import ChatMessage from '../components/ChatMessage';
-import PaperCard from '../components/PaperCard';
-import { PaperAirplaneIcon } from '@heroicons/react/24/solid';
+import ChatSessions from '../components/ChatSessions';
+import { API_BASE_URL } from '../config';
 
 const Chat = () => {
-  const [query, setQuery] = useState('');
-  const [yearFilter, setYearFilter] = useState('');
-  const [keywords, setKeywords] = useState('');
   const [messages, setMessages] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [input, setInput] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
   const messagesEndRef = useRef(null);
+  const { sessionId } = useParams();
+  const navigate = useNavigate();
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -20,121 +21,131 @@ const Chat = () => {
     scrollToBottom();
   }, [messages]);
 
+  useEffect(() => {
+    const loadSession = async () => {
+      if (sessionId) {
+        try {
+          const response = await fetch(`${API_BASE_URL}/api/sessions/${sessionId}`);
+          if (!response.ok) {
+            throw new Error('Session not found');
+          }
+          const data = await response.json();
+          if (data.messages && data.messages.length > 0) {
+            setMessages(data.messages);
+          }
+        } catch (error) {
+          console.error('Error loading session:', error);
+          setError('Failed to load chat session');
+        }
+      }
+    };
+
+    loadSession();
+  }, [sessionId]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!query.trim()) return;
+    if (!input.trim()) return;
 
-    setLoading(true);
-    const userMessage = query;
-    setQuery('');
+    const userMessage = {
+      role: 'user',
+      content: input,
+      timestamp: new Date().toISOString()
+    };
 
-    // Add user message
-    setMessages(prev => [...prev, { content: userMessage, isUser: true }]);
+    setMessages(prev => [...prev, userMessage]);
+    setInput('');
+    setIsLoading(true);
+    setError(null);
 
     try {
-      const response = await axios.post(`${process.env.REACT_APP_API_URL}/chat`, {
-        query: userMessage,
-        year_filter: yearFilter ? parseInt(yearFilter) : null,
-        keywords: keywords ? keywords.split(',').map(k => k.trim()) : null
+      const response = await fetch(`${API_BASE_URL}/api/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          query: input,
+          session_id: sessionId,
+          context: {}
+        }),
       });
 
+      if (!response.ok) {
+        throw new Error('Failed to get response');
+      }
+
+      const data = await response.json();
+      
+      // Update session ID if this is a new chat
+      if (!sessionId && data.session_id) {
+        navigate(`/chat/${data.session_id}`);
+      }
+
       // Add assistant response
-      setMessages(prev => [
-        ...prev,
-        { 
-          content: response.data.response,
-          isUser: false,
-          papers: response.data.papers
-        }
-      ]);
+      const assistantMessage = {
+        role: 'assistant',
+        content: data.response,
+        html_content: data.html_response,
+        timestamp: new Date().toISOString()
+      };
+
+      setMessages(prev => [...prev, assistantMessage]);
     } catch (error) {
-      console.error('Error:', error);
-      setMessages(prev => [
-        ...prev,
-        { 
-          content: 'Sorry, there was an error processing your request.',
-          isUser: false
-        }
-      ]);
+      console.error('Error sending message:', error);
+      setError('Failed to send message');
+    } finally {
+      setIsLoading(false);
     }
-    setLoading(false);
   };
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] bg-gray-100">
-      {/* Sidebar */}
-      <div className="w-64 bg-white shadow-lg p-4">
-        <h2 className="text-xl font-bold mb-4">Filters</h2>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Year
-            </label>
-            <input
-              type="number"
-              value={yearFilter}
-              onChange={(e) => setYearFilter(e.target.value)}
-              className="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-              placeholder="e.g., 2023"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Keywords (comma-separated)
-            </label>
-            <input
-              type="text"
-              value={keywords}
-              onChange={(e) => setKeywords(e.target.value)}
-              className="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-              placeholder="e.g., AI, machine learning"
-            />
-          </div>
-        </div>
+    <div className="flex h-screen bg-gray-100">
+      <div className="w-1/4 border-r border-gray-200 bg-white">
+        <ChatSessions />
       </div>
-
-      {/* Main Chat Area */}
       <div className="flex-1 flex flex-col">
-        {/* Messages */}
         <div className="flex-1 overflow-y-auto p-4">
-          {messages.map((message, index) => (
-            <div key={index}>
-              <ChatMessage
-                message={message.content}
-                isUser={message.isUser}
-              />
-              {!message.isUser && message.papers && (
-                <div className="mt-4 space-y-4">
-                  {message.papers.map((paper, paperIndex) => (
-                    <PaperCard key={paperIndex} paper={paper} />
-                  ))}
-                </div>
-              )}
+          {messages.length === 0 ? (
+            <div className="flex items-center justify-center h-full text-gray-500">
+              Start a new conversation by typing a message below
             </div>
-          ))}
+          ) : (
+            messages.map((message, index) => (
+              <ChatMessage key={index} message={message} />
+            ))
+          )}
+          {isLoading && (
+            <div className="flex items-center justify-center p-4">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+            </div>
+          )}
+          {error && (
+            <div className="text-red-500 text-center p-4">
+              {error}
+            </div>
+          )}
           <div ref={messagesEndRef} />
         </div>
-
-        {/* Input Area */}
-        <div className="border-t bg-white p-4">
-          <form onSubmit={handleSubmit} className="flex space-x-4">
+        <form onSubmit={handleSubmit} className="border-t border-gray-200 p-4 bg-white">
+          <div className="flex space-x-4">
             <input
               type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Ask about research papers..."
-              className="flex-1 rounded-lg border border-gray-300 px-4 py-2 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-              disabled={loading}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="Type your message..."
+              className="flex-1 rounded-lg border border-gray-300 px-4 py-2 focus:outline-none focus:border-blue-500"
+              disabled={isLoading}
             />
             <button
               type="submit"
-              disabled={loading || !query.trim()}
-              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
+              disabled={isLoading || !input.trim()}
+              className="bg-blue-500 text-white px-6 py-2 rounded-lg hover:bg-blue-600 focus:outline-none disabled:opacity-50"
             >
-              <PaperAirplaneIcon className="h-5 w-5" />
+              Send
             </button>
-          </form>
-        </div>
+          </div>
+        </form>
       </div>
     </div>
   );
