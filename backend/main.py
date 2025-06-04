@@ -6,7 +6,7 @@ import os
 from dotenv import load_dotenv
 import logging
 import uvicorn
-from database import get_db, Base, engine, ChatSession
+from database import get_db, Base, engine, ChatSession, Arxiv
 from agents.chat_agent import ChatAgent
 import uuid
 from datetime import datetime
@@ -80,6 +80,16 @@ class SessionResponse(BaseModel):
     context: Optional[Dict[str, Any]] = None
     created_at: datetime
     updated_at: datetime
+
+# Add SearchRequest model
+class SearchRequest(BaseModel):
+    year: Optional[int] = None
+    keywords: Optional[List[str]] = []
+
+# Add SearchResponse model
+class SearchResponse(BaseModel):
+    papers: List[Dict[str, Any]]
+    summary: str
 
 # API Endpoints
 @app.post("/api/chat", response_model=ChatResponse)
@@ -277,6 +287,69 @@ async def health_check():
 async def root():
     """Root endpoint."""
     return {"message": "Research Assistant Chatbot API is running"}
+
+# Add search endpoint
+@app.post("/api/search", response_model=SearchResponse)
+async def search_papers(request: SearchRequest):
+    """
+    Search for papers in the arXiv database.
+    """
+    try:
+        with get_db() as db:
+            # Build the query
+            query = db.query(Arxiv)
+            
+            # Add year filter if provided
+            if request.year:
+                query = query.filter(Arxiv.published_date >= f"{request.year}-01-01",
+                                   Arxiv.published_date < f"{request.year + 1}-01-01")
+            
+            # Add keyword filter if provided
+            if request.keywords and len(request.keywords) > 0:
+                keyword_conditions = []
+                for keyword in request.keywords:
+                    keyword_lower = keyword.lower()
+                    keyword_conditions.append(
+                        (Arxiv.title.ilike(f"%{keyword_lower}%") | 
+                         Arxiv.abstract.ilike(f"%{keyword_lower}%"))
+                    )
+                query = query.filter(*keyword_conditions)
+            
+            # Execute query with limit
+            papers = query.order_by(Arxiv.published_date.desc()).limit(50).all()
+            
+            # Convert papers to dict format
+            papers_data = []
+            for paper in papers:
+                papers_data.append({
+                    "id": paper.id,
+                    "title": paper.title,
+                    "authors": paper.authors,
+                    "abstract": paper.abstract,
+                    "categories": paper.categories,
+                    "published_date": paper.published_date.isoformat() if paper.published_date else None,
+                    "updated_date": paper.updated_date.isoformat() if paper.updated_date else None,
+                    "doi": paper.doi,
+                    "journal_ref": paper.journal_ref,
+                    "primary_category": paper.primary_category,
+                    "comment": paper.comment
+                })
+            
+            # Generate summary
+            summary = ""
+            if papers_data:
+                year_text = f"in {request.year}" if request.year else ""
+                keyword_text = f"related to {', '.join(request.keywords)}" if request.keywords else ""
+                summary = f"Found {len(papers_data)} papers {year_text} {keyword_text}."
+            
+            return SearchResponse(
+                papers=papers_data,
+                summary=summary
+            )
+            
+    except Exception as e:
+        logger.error(f"Error searching papers: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8001, reload=True) 
