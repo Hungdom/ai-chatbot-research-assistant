@@ -25,6 +25,15 @@ const Chat = () => {
     scrollToBottom();
   }, [messages]);
 
+  // Reset state when navigating to a new chat
+  useEffect(() => {
+    if (!sessionId) {
+      setMessages([]);
+      setInput('');
+      setError(null);
+    }
+  }, [sessionId]);
+
   useEffect(() => {
     const loadSession = async () => {
       if (sessionId) {
@@ -141,6 +150,27 @@ const Chat = () => {
                 <p className={`text-sm text-center max-w-md ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                   Ask questions about research topics, get instant answers with relevant paper citations, and explore academic insights.
                 </p>
+                
+                {/* Example questions section */}
+                <div className={`mt-8 w-full max-w-2xl ${isDarkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-sm p-6 space-y-4`}>
+                  <h3 className={`text-base font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                    Example Questions
+                  </h3>
+                  
+                  <div className="space-y-3">
+                    <ul className={`space-y-2 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                      <li>• What are the latest breakthroughs in quantum computing?</li>
+                      <li>• How do researchers evaluate machine learning models?</li>
+                      <li>• What are the emerging trends in AI research?</li>
+                      <li>• Can you explain the key findings in recent climate change studies?</li>
+                      <li>• What are the current challenges in natural language processing?</li>
+                    </ul>
+                  </div>
+
+                  <div className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'} mt-2`}>
+                    Tip: Be specific in your questions to get more detailed responses.
+                  </div>
+                </div>
               </div>
             ) : (
               messages.map((message, index) => (
