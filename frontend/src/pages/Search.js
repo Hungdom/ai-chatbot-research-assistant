@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import ArxivCard from '../components/ArxivCard';
+import { useTheme } from '../context/ThemeContext';
 
 const Search = () => {
+  const { isDarkMode } = useTheme();
   const [yearFilter, setYearFilter] = useState('');
   const [keywords, setKeywords] = useState('');
   const [arxiv, setArxiv] = useState([]);
@@ -44,17 +46,17 @@ const Search = () => {
   };
 
   return (
-    <div className="container mx-auto px-4 py-8">
+    <div className={`container mx-auto px-4 py-8 ${isDarkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
       <div className="max-w-3xl mx-auto space-y-6">
-        <div className="bg-white shadow sm:rounded-lg">
+        <div className={`${isDarkMode ? 'bg-gray-800' : 'bg-white'} shadow sm:rounded-lg`}>
           <div className="px-4 py-5 sm:p-6">
-            <h3 className="text-lg font-medium leading-6 text-gray-900">Search ArXiv Papers</h3>
+            <h3 className={`text-lg font-medium leading-6 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Search ArXiv Papers</h3>
             <div className="mt-2 max-w-xl text-sm text-gray-500">
               <p>Use filters to find relevant academic papers from ArXiv.</p>
             </div>
             <form onSubmit={handleSearch} className="mt-5 space-y-4">
               <div>
-                <label htmlFor="year" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="year" className={`block text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                   Year
                 </label>
                 <input
@@ -63,14 +65,14 @@ const Search = () => {
                   id="year"
                   value={yearFilter}
                   onChange={(e) => setYearFilter(e.target.value)}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                  className={`mt-1 block w-full rounded-md ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm`}
                   placeholder="e.g., 2023"
                   min="1991"
                   max={new Date().getFullYear()}
                 />
               </div>
               <div>
-                <label htmlFor="keywords" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="keywords" className={`block text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                   Keywords (comma-separated)
                 </label>
                 <input
@@ -79,7 +81,7 @@ const Search = () => {
                   id="keywords"
                   value={keywords}
                   onChange={(e) => setKeywords(e.target.value)}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                  className={`mt-1 block w-full rounded-md ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm`}
                   placeholder="e.g., AI, machine learning, deep learning"
                 />
               </div>
@@ -115,9 +117,9 @@ const Search = () => {
         )}
 
         {summary && (
-          <div className="bg-white shadow sm:rounded-lg p-4">
-            <h3 className="text-lg font-medium text-gray-900 mb-2">Summary</h3>
-            <p className="text-gray-700">{summary}</p>
+          <div className={`${isDarkMode ? 'bg-gray-800' : 'bg-white'} shadow sm:rounded-lg p-4`}>
+            <h3 className={`text-lg font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'} mb-2`}>Summary</h3>
+            <p className={isDarkMode ? 'text-gray-300' : 'text-gray-700'}>{summary}</p>
           </div>
         )}
 

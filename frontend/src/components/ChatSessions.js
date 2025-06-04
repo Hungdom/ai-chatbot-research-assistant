@@ -2,12 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { TrashIcon } from '@heroicons/react/24/outline';
+import { useTheme } from '../context/ThemeContext';
 
 const ChatSessions = () => {
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
   const location = useLocation();
+  const { isDarkMode } = useTheme();
 
   const loadSessions = async () => {
     try {
@@ -81,8 +83,8 @@ const ChatSessions = () => {
   };
 
   return (
-    <div className="w-64 bg-white border-r border-gray-200 h-full flex flex-col">
-      <div className="p-4 border-b border-gray-200">
+    <div className={`w-64 ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-r h-full flex flex-col`}>
+      <div className={`p-4 border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}>
         <button
           onClick={handleNewChat}
           className="w-full bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
@@ -93,31 +95,37 @@ const ChatSessions = () => {
       
       <div className="flex-1 overflow-y-auto">
         {loading ? (
-          <div className="p-4 text-center text-gray-500">Loading sessions...</div>
+          <div className={`p-4 text-center ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Loading sessions...</div>
         ) : sessions.length === 0 ? (
-          <div className="p-4 text-center text-gray-500">No chat sessions yet</div>
+          <div className={`p-4 text-center ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>No chat sessions yet</div>
         ) : (
-          <div className="divide-y divide-gray-200">
+          <div className={`divide-y ${isDarkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
             {sessions.map((session) => (
               <Link
                 key={session.session_id}
                 to={`/chat/${session.session_id}`}
-                className={`block p-4 hover:bg-gray-50 ${
-                  location.pathname === `/chat/${session.session_id}` ? 'bg-gray-50' : ''
+                className={`block p-4 ${
+                  location.pathname === `/chat/${session.session_id}`
+                    ? isDarkMode
+                      ? 'bg-gray-700'
+                      : 'bg-gray-50'
+                    : isDarkMode
+                      ? 'hover:bg-gray-700'
+                      : 'hover:bg-gray-50'
                 }`}
               >
                 <div className="flex justify-between items-start">
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate">
+                    <p className={`text-sm font-medium ${isDarkMode ? 'text-gray-100' : 'text-gray-900'} truncate`}>
                       {getSessionPreview(session)}
                     </p>
-                    <p className="text-xs text-gray-500 mt-1">
+                    <p className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'} mt-1`}>
                       {formatDate(session.updated_at)}
                     </p>
                   </div>
                   <button
                     onClick={(e) => handleDeleteSession(e, session.session_id)}
-                    className="ml-2 text-gray-400 hover:text-gray-500"
+                    className={`ml-2 ${isDarkMode ? 'text-gray-400 hover:text-gray-300' : 'text-gray-400 hover:text-gray-500'}`}
                   >
                     <TrashIcon className="h-5 w-5" />
                   </button>

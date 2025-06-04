@@ -13,6 +13,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 import json
 from contextlib import contextmanager
+from sqlalchemy.sql import text
 
 # Configure logging
 logging.basicConfig(
@@ -292,11 +293,16 @@ async def root():
 @app.post("/api/search", response_model=SearchResponse)
 async def search_papers(request: SearchRequest):
     """
-    Search for papers in the arXiv database.
+    Search for papers in the arXiv database using both semantic and keyword-based search.
     """
     try:
         with get_db() as db:
-            # Build the query
+            # Get query embedding for semantic search
+            query_embedding = await chat_agent._get_embedding(
+                " ".join(request.keywords) if request.keywords else ""
+            )
+            
+            # Build the base query
             query = db.query(Arxiv)
             
             # Add year filter if provided
@@ -315,13 +321,34 @@ async def search_papers(request: SearchRequest):
                     )
                 query = query.filter(*keyword_conditions)
             
+            # Add semantic similarity if we have embeddings
+            if query_embedding:
+                # Convert embedding to string format for PostgreSQL
+                embedding_str = str(query_embedding).replace("'", "")
+                # Add cosine similarity calculation
+                similarity_expr = text(
+                    "cosine_similarity(arxiv.embedding::vector, ARRAY" + embedding_str + "::vector) as similarity"
+                )
+                query = query.add_columns(similarity_expr)
+                # Order by similarity if available
+                query = query.order_by(text("similarity DESC"))
+            else:
+                # Fallback to date ordering if no embeddings
+                query = query.order_by(Arxiv.published_date.desc())
+            
             # Execute query with limit
-            papers = query.order_by(Arxiv.published_date.desc()).limit(50).all()
+            results = query.limit(50).all()
             
             # Convert papers to dict format
             papers_data = []
-            for paper in papers:
-                papers_data.append({
+            for result in results:
+                if isinstance(result, tuple):
+                    paper, similarity = result
+                else:
+                    paper = result
+                    similarity = None
+                
+                paper_dict = {
                     "id": paper.id,
                     "title": paper.title,
                     "authors": paper.authors,
@@ -332,15 +359,18 @@ async def search_papers(request: SearchRequest):
                     "doi": paper.doi,
                     "journal_ref": paper.journal_ref,
                     "primary_category": paper.primary_category,
-                    "comment": paper.comment
-                })
+                    "comment": paper.comment,
+                    "similarity": float(similarity) if similarity is not None else None
+                }
+                papers_data.append(paper_dict)
             
-            # Generate summary
+            # Generate enhanced summary
             summary = ""
             if papers_data:
                 year_text = f"in {request.year}" if request.year else ""
                 keyword_text = f"related to {', '.join(request.keywords)}" if request.keywords else ""
-                summary = f"Found {len(papers_data)} papers {year_text} {keyword_text}."
+                similarity_text = "using semantic similarity" if query_embedding else ""
+                summary = f"Found {len(papers_data)} papers {year_text} {keyword_text} {similarity_text}."
             
             return SearchResponse(
                 papers=papers_data,

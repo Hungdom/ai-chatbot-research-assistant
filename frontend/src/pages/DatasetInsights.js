@@ -11,6 +11,7 @@ import {
   Tooltip,
   Legend,
 } from 'chart.js';
+import { useTheme } from '../context/ThemeContext';
 
 ChartJS.register(
   CategoryScale,
@@ -52,6 +53,8 @@ const staticData = {
 };
 
 function DatasetInsights() {
+  const { isDarkMode } = useTheme();
+
   // Prepare chart data
   const papersByYearData = {
     labels: staticData.papersByYear.map(item => item.year),
@@ -76,29 +79,64 @@ function DatasetInsights() {
     ],
   };
 
+  const chartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      title: {
+        display: true,
+        text: 'Number of Papers Published by Year',
+        color: isDarkMode ? '#fff' : '#000',
+      },
+      legend: {
+        labels: {
+          color: isDarkMode ? '#fff' : '#000',
+        },
+      },
+    },
+    scales: {
+      y: {
+        ticks: {
+          color: isDarkMode ? '#fff' : '#000',
+        },
+        grid: {
+          color: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+        },
+      },
+      x: {
+        ticks: {
+          color: isDarkMode ? '#fff' : '#000',
+        },
+        grid: {
+          color: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+        },
+      },
+    },
+  };
+
   return (
-    <div className="container mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold mb-8">arXiv Dataset Insights</h1>
+    <div className={`container mx-auto px-4 py-8 ${isDarkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
+      <h1 className={`text-3xl font-bold mb-8 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>arXiv Dataset Insights</h1>
       
       {/* Dataset Overview */}
-      <div className="bg-white rounded-lg shadow p-6 mb-8">
-        <h2 className="text-xl font-semibold mb-4">Dataset Overview</h2>
+      <div className={`${isDarkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-6 mb-8`}>
+        <h2 className={`text-xl font-semibold mb-4 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Dataset Overview</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-gray-50 rounded-lg p-4">
-            <h3 className="text-gray-500 text-sm font-medium">Total Papers</h3>
-            <p className="text-3xl font-bold">{staticData.totalPapers.toLocaleString()}</p>
+          <div className={`${isDarkMode ? 'bg-gray-700' : 'bg-gray-50'} rounded-lg p-4`}>
+            <h3 className={`text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Total Papers</h3>
+            <p className={`text-3xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{staticData.totalPapers.toLocaleString()}</p>
           </div>
-          <div className="bg-gray-50 rounded-lg p-4">
-            <h3 className="text-gray-500 text-sm font-medium">Total Authors</h3>
-            <p className="text-3xl font-bold">{staticData.totalAuthors.toLocaleString()}</p>
+          <div className={`${isDarkMode ? 'bg-gray-700' : 'bg-gray-50'} rounded-lg p-4`}>
+            <h3 className={`text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Total Authors</h3>
+            <p className={`text-3xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{staticData.totalAuthors.toLocaleString()}</p>
           </div>
-          <div className="bg-gray-50 rounded-lg p-4">
-            <h3 className="text-gray-500 text-sm font-medium">Categories</h3>
-            <p className="text-3xl font-bold">{staticData.topCategories.length}</p>
+          <div className={`${isDarkMode ? 'bg-gray-700' : 'bg-gray-50'} rounded-lg p-4`}>
+            <h3 className={`text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Categories</h3>
+            <p className={`text-3xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{staticData.topCategories.length}</p>
           </div>
-          <div className="bg-gray-50 rounded-lg p-4">
-            <h3 className="text-gray-500 text-sm font-medium">Years Covered</h3>
-            <p className="text-3xl font-bold">
+          <div className={`${isDarkMode ? 'bg-gray-700' : 'bg-gray-50'} rounded-lg p-4`}>
+            <h3 className={`text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Years Covered</h3>
+            <p className={`text-3xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
               {staticData.papersByYear[0].year} - {staticData.papersByYear[staticData.papersByYear.length - 1].year}
             </p>
           </div>
@@ -106,67 +144,43 @@ function DatasetInsights() {
       </div>
 
       {/* Papers by Year */}
-      <div className="bg-white rounded-lg shadow p-6 mb-8">
-        <h2 className="text-xl font-semibold mb-4">Publication Trends</h2>
+      <div className={`${isDarkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-6 mb-8`}>
+        <h2 className={`text-xl font-semibold mb-4 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Publication Trends</h2>
         <div className="h-96">
-          <Line 
-            data={papersByYearData}
-            options={{
-              responsive: true,
-              maintainAspectRatio: false,
-              plugins: {
-                title: {
-                  display: true,
-                  text: 'Number of Papers Published by Year'
-                }
-              }
-            }}
-          />
+          <Line data={papersByYearData} options={chartOptions} />
         </div>
       </div>
 
       {/* Top Categories */}
-      <div className="bg-white rounded-lg shadow p-6 mb-8">
-        <h2 className="text-xl font-semibold mb-4">Top Research Categories</h2>
+      <div className={`${isDarkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-6 mb-8`}>
+        <h2 className={`text-xl font-semibold mb-4 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Top Research Categories</h2>
         <div className="h-96">
-          <Bar 
-            data={topCategoriesData}
-            options={{
-              responsive: true,
-              maintainAspectRatio: false,
-              plugins: {
-                title: {
-                  display: true,
-                  text: 'Most Active Research Areas'
-                }
-              }
-            }}
-          />
+          <Bar data={topCategoriesData} options={chartOptions} />
         </div>
       </div>
 
       {/* Top Authors */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <h2 className="text-xl font-semibold mb-4">Most Prolific Authors</h2>
+      <div className={`${isDarkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-6`}>
+        <h2 className={`text-xl font-semibold mb-4 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Most Prolific Authors</h2>
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+            <thead className={isDarkMode ? 'bg-gray-700' : 'bg-gray-50'}>
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className={`px-6 py-3 text-left text-xs font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-500'} uppercase tracking-wider`}>
                   Author
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className={`px-6 py-3 text-left text-xs font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-500'} uppercase tracking-wider`}>
                   Papers
                 </th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
+            <tbody className={`divide-y ${isDarkMode ? 'divide-gray-700 bg-gray-800' : 'divide-gray-200 bg-white'}`}>
               {staticData.topAuthors.map((author, index) => (
                 <tr key={index}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                  <td className={`px-6 py-4 whitespace-nowrap text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
                     {author.name}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  <td className={`px-6 py-4 whitespace-nowrap text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>
                     {author.paperCount.toLocaleString()}
                   </td>
                 </tr>
