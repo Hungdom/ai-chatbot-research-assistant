@@ -4,6 +4,7 @@ import Layout from './components/Layout';
 import Chat from './pages/Chat';
 import Home from './pages/Home';
 import Search from './pages/Search';
+import DatasetInsights from './pages/DatasetInsights';
 
 function App() {
   return (
@@ -14,6 +15,7 @@ function App() {
           <Route path="/chat" element={<Chat />} />
           <Route path="/chat/:sessionId" element={<Chat />} />
           <Route path="/search" element={<Search />} />
+          <Route path="/dataset" element={<DatasetInsights />} />
         </Routes>
       </Layout>
     </Router>

@@ -1,6 +1,10 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { ChatBubbleLeftRightIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
+import { 
+  ChatBubbleLeftRightIcon, 
+  MagnifyingGlassIcon,
+  ChartBarIcon 
+} from '@heroicons/react/24/outline';
 
 const navigation = [
   {
@@ -12,6 +16,11 @@ const navigation = [
     name: 'Search',
     href: '/search',
     icon: MagnifyingGlassIcon,
+  },
+  {
+    name: 'Dataset',
+    href: '/dataset',
+    icon: ChartBarIcon,
   },
 ];
 
