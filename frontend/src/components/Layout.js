@@ -20,8 +20,8 @@ const Layout = ({ children }) => {
 
   return (
     <div className="min-h-screen bg-gray-100">
-      {/* Navigation */}
-      <nav className="bg-white shadow-sm">
+      {/* Navigation - Fixed at top */}
+      <nav className="fixed top-0 left-0 right-0 bg-white shadow-sm z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             <div className="flex">
@@ -54,8 +54,8 @@ const Layout = ({ children }) => {
         </div>
       </nav>
 
-      {/* Mobile navigation */}
-      <div className="sm:hidden">
+      {/* Mobile navigation - Fixed below main nav */}
+      <div className="fixed top-16 left-0 right-0 sm:hidden bg-white shadow-sm z-40">
         <div className="pt-2 pb-3 space-y-1">
           {navigation.map((item) => {
             const isActive = location.pathname === item.href;
@@ -77,8 +77,8 @@ const Layout = ({ children }) => {
         </div>
       </div>
 
-      {/* Main content */}
-      <main className="h-[calc(100vh-4rem)]">
+      {/* Main content - Add padding to account for fixed nav */}
+      <main className="pt-16 sm:pt-16">
         {children}
       </main>
     </div>
