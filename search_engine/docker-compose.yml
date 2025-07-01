@@ -1,0 +1,69 @@
+version: "3.5"
+
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.0.0
+    container_name: es
+    restart: always
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - 'ES_JAVA_OPTS=-Xmx128m -Xms128m'
+      - bootstrap.memory_lock=true
+    ports:
+      - 9200:9200
+    networks:
+      - es-kib
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "curl",
+          "-f",
+          "http://es:9200/_cluster/health?pretty"
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    volumes:
+      - ./app/init-index.sh:/usr/local/bin/init-index.sh  # Mount script vào container
+    command: >
+      bash -c "
+        /usr/local/bin/docker-entrypoint.sh &  # Start Elasticsearch
+        pid=$!;
+        sleep 10;  # Đợi Elasticsearch khởi động
+        bash /usr/local/bin/init-index.sh;  # Chạy script khởi tạo index
+        wait $pid
+      "
+
+
+  logstash:
+    container_name: logstash_new
+    build:
+      context: ./logstash
+      dockerfile: Dockerfile
+    depends_on:
+      - elasticsearch
+    environment:
+      - CONFIG_SUPPORT_ESCAPE=true
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+      - LS_JAVA_OPTS=-Xms512m -Xmx512m
+    volumes:
+      - ./logstash/config:/usr/share/logstash/config
+    networks:
+      - es-kib
+
+  web:
+    build: .
+    container_name: app
+    restart: on-failure
+    depends_on:
+      - elasticsearch
+    command: >
+      sh -c "sleep 30; uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    ports:
+      - 8000:8000
+
+networks:
+  es-kib:
+    driver: bridge
