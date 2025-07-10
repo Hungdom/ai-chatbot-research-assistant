@@ -7,7 +7,7 @@ from typing import Dict, Any, List, Optional
 from .base_agent import BaseAgent
 from .smart_search_agent import SmartSearchAgent
 from database import get_db, Arxiv, ChatSession
-from sqlalchemy import text, func, desc, or_, extract
+from sqlalchemy import text, func, desc, or_, extract, select
 import openai
 import json
 import uuid
@@ -524,15 +524,60 @@ class EnhancedChatAgent(BaseAgent):
             "average_authors_per_paper": len(all_authors) / total_papers if total_papers > 0 else 0
         }
 
+    def _count_tokens(self, text: str) -> int:
+        """
+        Estimate token count (rough approximation: 1 token ≈ 4 characters)
+        """
+        return len(text) // 4
+
+    def _truncate_papers_for_context(self, papers: List[Dict[str, Any]], max_tokens: int = 6000) -> List[Dict[str, Any]]:
+        """
+        Truncate papers list to fit within token limits
+        """
+        if not papers:
+            return papers
+        
+        truncated_papers = []
+        current_tokens = 0
+        
+        for paper in papers:
+            # Create a minimal version of the paper for token counting
+            paper_summary = {
+                "arxiv_id": paper["arxiv_id"],
+                "title": paper["title"],
+                "abstract": paper["abstract"][:250] + "..." if len(paper["abstract"]) > 250 else paper["abstract"],
+                "authors": paper["authors"][:2],  # Only first 2 authors
+                "categories": paper["categories"][:3],  # Only first 3 categories
+                "published_date": paper["published_date"],
+                "similarity": paper.get("similarity", 0.0)
+            }
+            
+            # Estimate tokens for this paper
+            paper_text = json.dumps(paper_summary)
+            paper_tokens = self._count_tokens(paper_text)
+            
+            # Check if adding this paper would exceed the limit
+            if current_tokens + paper_tokens > max_tokens:
+                break
+                
+            truncated_papers.append(paper_summary)
+            current_tokens += paper_tokens
+        
+        self.logger.info(f"Enhanced agent - Truncated papers: {len(papers)} -> {len(truncated_papers)} (estimated {current_tokens} tokens)")
+        return truncated_papers
+
     async def _generate_enhanced_response(self, query: str, intent: Dict[str, Any], papers: List[Dict[str, Any]], context: Dict[str, Any]) -> Dict[str, str]:
         """
-        Generate enhanced response with rich insights
+        Generate enhanced response with rich insights - TOKEN OPTIMIZED
         """
-        # Prepare enhanced context
+        # 1. TRUNCATE PAPERS TO PREVENT TOKEN OVERFLOW
+        truncated_papers = self._truncate_papers_for_context(papers, max_tokens=5000)
+        
+        # 2. Prepare COMPACT context
         response_context = {
             "query": query,
             "intent": intent,
-            "papers": papers,
+            "papers": truncated_papers,
             "context": context,
             "insights": intent.get("insights", {}),
             "metadata": {
@@ -542,30 +587,54 @@ class EnhancedChatAgent(BaseAgent):
             }
         }
         
-        # Generate response using GPT-4 for better quality
-        system_prompt = """You are an advanced research assistant with deep knowledge of academic research. 
-        Generate comprehensive, insightful responses that:
+        # 3. Generate response using GPT-4 with CONCISE prompts
+        system_prompt = """You are an advanced research assistant. Provide comprehensive, insightful responses that:
         1. Address the user's specific query
-        2. Provide relevant paper recommendations with context
-        3. Include insights about research trends and patterns
+        2. Summarize key findings from the papers
+        3. Highlight important trends and patterns
         4. Suggest follow-up research directions
-        5. Explain the significance of findings
         
-        Format your response to be informative, well-structured, and engaging."""
+        Keep responses focused and well-structured."""
         
-        user_prompt = f"""
-        Query: {query}
+        # 4. CREATE COMPACT USER PROMPT
+        papers_summary = f"Found {len(papers)} papers"
+        if truncated_papers:
+            top_similarity = max(p.get('similarity', 0) for p in truncated_papers)
+            papers_summary += f" (best match: {top_similarity:.1%})"
         
-        Search Results: {len(papers)} papers found
+        # Extract key insights compactly
+        insights_summary = ""
+        insights = intent.get("insights", {})
+        if insights:
+            insight_parts = []
+            if insights.get("research_landscape", {}).get("research_maturity"):
+                insight_parts.append(f"Field maturity: {insights['research_landscape']['research_maturity']}")
+            if insights.get("trend_analysis", {}).get("trend_direction"):
+                insight_parts.append(f"Trend: {insights['trend_analysis']['trend_direction']}")
+            insights_summary = " | ".join(insight_parts)
         
-        Research Insights: {json.dumps(intent.get('insights', {}), indent=2)}
+        user_prompt = f"""Query: {query}
         
-        Query Analysis: {json.dumps(intent, indent=2)}
-        
-        Please provide a comprehensive response addressing the user's research query.
-        """
+Results: {papers_summary}
+{f"Insights: {insights_summary}" if insights_summary else ""}
+
+Analysis: {json.dumps(intent.get('query_type', 'general'), ensure_ascii=False)}
+
+Provide a comprehensive response addressing the research query."""
         
         try:
+            # 5. TOKEN CHECK BEFORE API CALL
+            prompt_tokens = self._count_tokens(user_prompt)
+            system_tokens = self._count_tokens(system_prompt)
+            total_tokens = prompt_tokens + system_tokens
+            
+            self.logger.info(f"Enhanced agent token usage: {total_tokens} tokens")
+            
+            # If too long, use minimal prompt
+            if total_tokens > 14000:
+                self.logger.warning("Enhanced prompt too long, using minimal format")
+                user_prompt = f"Query: {query}\nFound {len(papers)} relevant papers.\nProvide insights and recommendations."
+            
             completion = await openai.ChatCompletion.acreate(
                 model="gpt-4",
                 messages=[
@@ -573,16 +642,16 @@ class EnhancedChatAgent(BaseAgent):
                     {"role": "user", "content": user_prompt}
                 ],
                 temperature=0.7,
-                max_tokens=1500
+                max_tokens=800  # Limit response length for GPT-4
             )
             
             response_text = completion.choices[0].message.content
             
         except Exception as e:
-            self.logger.error(f"Error generating response: {str(e)}")
+            self.logger.error(f"Error generating enhanced response: {str(e)}")
             response_text = self._generate_fallback_response(query, papers, intent)
         
-        # Generate HTML response
+        # 6. Generate HTML response using ORIGINAL papers list
         html_response = await self._format_enhanced_html_response(response_text, papers, intent)
         
         return {

@@ -130,103 +130,59 @@ EMBEDDING_PROMPTS = {
 }
 
 CHAT_AGENT_PROMPTS = {
-    "system": """You are an experienced research mentor and academic advisor. Your role is to:
-1. Guide students through the research process
-2. Help identify research trends and opportunities
-3. Analyze papers and methodologies
-4. Connect students with relevant research
-5. Develop critical thinking about research topics
-6. Provide academic context and explanations
+    "system": """You are a research assistant helping users find and understand academic papers. 
+    
+Guidelines:
+- Be helpful and informative
+- Focus on the user's specific query
+- Highlight key findings and insights
+- Suggest follow-up questions when appropriate
+- Keep responses clear and well-structured""",
+    
+    "paper_search_with_results": """Query: {query}
+Search Results: {papers}
+{insights}
 
-You have access to a comprehensive database of research papers and can:
-- Search for relevant papers using semantic and metadata search
-- Analyze research trends and patterns
-- Identify key authors and institutions
-- Find research gaps and opportunities
-- Provide detailed insights about specific topics
-- Guide students through the research process
+Based on the papers found, provide:
+1. A summary of key findings
+2. How these papers relate to the query
+3. Important trends or patterns
+4. Suggestions for further research
 
-Always maintain a professional, academic tone while being approachable and supportive.""",
+Be concise but comprehensive.""",
+    
+    "paper_search_no_results": """Query: {query}
+No specific papers found matching this query.
 
-    "intent_analysis": """Analyze the student's query to understand:
-1. Their research stage (beginner, intermediate, advanced)
-2. Their knowledge level in the topic
-3. Their specific needs (paper search, methodology understanding, trend analysis, etc.)
-4. The research context they're working in
+Please:
+1. Suggest alternative search terms or approaches
+2. Recommend related research areas to explore
+3. Provide general guidance on this research topic
+4. Ask clarifying questions to better understand the user's needs""",
+    
+    "general_query": """Query: {query}
+Context: {context}
 
-Respond with a JSON object containing:
-{
-    "type": "paper_search" | "methodology" | "trend_analysis" | "general_query",
-    "needs_search": true/false,
-    "search_params": {
-        "year": null | int,
-        "category": null | str
-    },
-    "follow_up_questions": []
-}""",
+Please provide a helpful response addressing the user's question.
+If this appears to be a research query, suggest ways to find relevant papers or research directions.""",
+    
+    "follow_up": """Generate 2-3 helpful follow-up questions for: {query}
 
-    "paper_search_with_results": """Based on the student's query: {query}
+Focus on:
+- Specific aspects to explore deeper
+- Related research areas
+- Practical applications
 
-I've found several relevant papers that can help with your research. Here's what I've discovered:
+One question per line.""",
+    
+    "intent_analysis": """Analyze this research query and return JSON with:
+- type: paper_search, trend_analysis, author_search, general_question
+- categories: list of relevant research categories
+- search_terms: key terms to search for
+- time_scope: recent, historical, all_time
+- needs_search: true/false
 
-1. Key Papers:
-{arxiv}
+Query: {query}
 
-2. Research Insights:
-- Trends: {insights[trends]}
-- Key Authors: {insights[authors]}
-- Methodologies: {insights[methodology]}
-- Research Gaps: {insights[gaps]}
-
-Would you like to:
-1. Learn more about any specific paper?
-2. Explore the research trends in more detail?
-3. Understand the methodologies used?
-4. Find more papers on a specific aspect?
-
-I'm here to help guide you through this research journey.""",
-
-    "paper_search_no_results": """I understand you're looking for research on: {query}
-
-While I couldn't find exact matches, let me help guide your research:
-
-1. Consider these alternative approaches:
-   - Broaden your search terms
-   - Look at related fields
-   - Check foundational papers in the area
-
-2. Would you like to:
-   - Explore a different aspect of the topic?
-   - Look at related research areas?
-   - Start with some foundational papers?
-
-I'm here to help you find the right research direction.""",
-
-    "general_query": """I understand you're asking about: {query}
-
-Let me help you explore this topic from a research perspective:
-
-1. Key Research Areas:
-   - What specific aspects interest you?
-   - Are you looking for recent developments or foundational work?
-   - Would you like to understand the methodology or results?
-
-2. I can help you:
-   - Find relevant papers
-   - Understand research trends
-   - Analyze methodologies
-   - Identify key researchers
-   - Find research gaps
-
-What aspect would you like to explore first?""",
-
-    "follow_up": """Based on the student's query: {query}
-
-Generate 3-5 thoughtful follow-up questions that will:
-1. Deepen their understanding of the topic
-2. Guide them to important research aspects
-3. Help identify research opportunities
-4. Connect to broader research trends
-
-Format each question on a new line."""
+Respond with valid JSON only."""
 } 

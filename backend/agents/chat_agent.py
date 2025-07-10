@@ -4,11 +4,12 @@ import openai
 from datetime import datetime
 from config.prompts import CHAT_AGENT_PROMPTS
 from database import get_db, Arxiv, ChatSession
-from sqlalchemy import text, func, desc, or_, extract
+from sqlalchemy import text, func, desc, or_, extract, and_
 from sqlalchemy.sql import select
 import numpy as np
 import json
 import logging
+import re
 from sqlalchemy.sql import bindparam
 import uuid
 
@@ -160,96 +161,138 @@ class ChatAgent(BaseAgent):
     
     async def _search_relevant_papers(self, query: str, intent: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
-        Search for relevant papers using both semantic and metadata search
+        Optimized paper search with efficient pre-filtering and minimal API calls
         """
         try:
-            self.logger.info("Starting paper search...")
+            self.logger.info("Starting optimized paper search...")
+            
             with get_db() as db:
-                # Get query embedding
-                query_embedding = await self._get_embedding(query)
+                # 1. FAST PRE-FILTERING
+                # Extract key terms
+                query_lower = query.lower().strip()
+                stop_words = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'from', 'as', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must', 'can', 'this', 'that', 'these', 'those'}
+                key_terms = [word for word in re.findall(r'\b\w+\b', query_lower) if word not in stop_words and len(word) > 2]
                 
-                if not query_embedding:
-                    self.logger.warning("Failed to generate query embedding, falling back to keyword search")
-                    return await self._search_papers_by_keywords(query, intent, db)
+                # 2. BUILD EFFICIENT QUERY
+                base_query = select(Arxiv)
+                conditions = []
                 
-                # Check if we have papers with embeddings
-                embedding_check = db.execute(
-                    text("SELECT COUNT(*) FROM arxiv WHERE embedding IS NOT NULL")
+                # Title/Abstract filtering with key terms
+                if key_terms:
+                    text_conditions = []
+                    for term in key_terms[:3]:  # Top 3 terms only
+                        text_conditions.extend([
+                            Arxiv.title.ilike(f'%{term}%'),
+                            Arxiv.abstract.ilike(f'%{term}%')
+                        ])
+                    
+                    if text_conditions:
+                        conditions.append(or_(*text_conditions))
+                
+                # Category filtering
+                search_params = intent.get("search_params", {})
+                if search_params.get("category"):
+                    category = search_params["category"]
+                    conditions.append(
+                        or_(
+                            Arxiv.categories.contains([category]),
+                            Arxiv.primary_category == category
+                        )
+                    )
+                
+                # Year filtering
+                if search_params.get("year"):
+                    year = search_params["year"]
+                    conditions.append(extract('year', Arxiv.published_date) == year)
+                
+                # Apply conditions
+                if conditions:
+                    base_query = base_query.where(or_(*conditions))
+                
+                # 3. TRY EMBEDDING SEARCH FIRST (if available)
+                papers = []
+                
+                # Quick embedding check - don't generate embedding if no papers have embeddings
+                has_embeddings = db.execute(
+                    text("SELECT EXISTS(SELECT 1 FROM arxiv WHERE embedding IS NOT NULL LIMIT 1)")
                 ).scalar()
                 
-                if embedding_check == 0:
-                    self.logger.warning("No papers with embeddings found, falling back to keyword search")
-                    return await self._search_papers_by_keywords(query, intent, db)
-
-                # Convert embedding to proper format for PostgreSQL
-                embedding_str = '[' + ','.join(map(str, query_embedding)) + ']'
+                if has_embeddings:
+                    query_embedding = await self._get_embedding(query)
+                    if query_embedding:
+                        try:
+                            embedding_str = '[' + ','.join(map(str, query_embedding)) + ']'
+                            similarity_expr = text(
+                                f"cosine_similarity(arxiv.embedding, '{embedding_str}'::vector) as similarity"
+                            )
+                            
+                            # Embedding query with pre-filtering
+                            embedding_query = select(Arxiv, similarity_expr).select_from(Arxiv).where(
+                                and_(
+                                    Arxiv.embedding.is_not(None),
+                                    *conditions if conditions else [text('true')]
+                                )
+                            ).order_by(text("similarity DESC")).limit(12)
+                            
+                            results = db.execute(embedding_query).all()
+                            
+                            for result in results:
+                                if isinstance(result, tuple) and len(result) == 2:
+                                    paper, similarity = result
+                                    if similarity and similarity > 0.2:  # Higher threshold
+                                        papers.append({
+                                            "arxiv_id": paper.arxiv_id,
+                                            "title": paper.title,
+                                            "abstract": paper.abstract,
+                                            "authors": paper.authors,
+                                            "categories": paper.categories,
+                                            "published_date": paper.published_date.isoformat() if paper.published_date else None,
+                                            "doi": paper.doi,
+                                            "primary_category": paper.primary_category,
+                                            "similarity": float(similarity)
+                                        })
+                            
+                            if papers:
+                                self.logger.info(f"Found {len(papers)} papers using embedding search")
+                                return papers
+                        except Exception as e:
+                            self.logger.warning(f"Embedding search failed: {str(e)}")
                 
-                # Build the query with similarity calculation
-                similarity_expr = text(
-                    f"cosine_similarity(arxiv.embedding, '{embedding_str}'::vector) as similarity"
-                )
-
-                # Create the base query with filters - only include papers with embeddings
-                base_query = select(
-                    Arxiv,
-                    similarity_expr
-                ).select_from(Arxiv).where(Arxiv.embedding.is_not(None))
-
-                # Add filters based on search parameters
-                if intent.get("search_params", {}).get("year"):
-                    year = intent["search_params"]["year"]
-                    base_query = base_query.where(
-                        extract('year', Arxiv.published_date) == year
-                    )
-
-                if intent.get("search_params", {}).get("category"):
-                    category = intent["search_params"]["category"]
-                    base_query = base_query.where(
-                        Arxiv.categories.contains([category])
-                    )
-
-                # Add ordering and limit
-                base_query = base_query.order_by(text("similarity DESC")).limit(10)
-
-                # Execute query
-                self.logger.info("Executing paper search query...")
-                results = db.execute(base_query).all()
+                # 4. FALLBACK TO KEYWORD SEARCH
+                # Order by recent papers first, limit to reduce processing
+                base_query = base_query.order_by(Arxiv.published_date.desc()).limit(25)
+                results = db.execute(base_query).scalars().all()
                 
-                # Convert results to dictionaries
+                # Calculate similarity and filter
+                papers_with_scores = []
+                for paper in results:
+                    similarity = self._calculate_keyword_similarity(query, paper)
+                    if similarity > 0.0:
+                        papers_with_scores.append((paper, similarity))
+                
+                # Sort by similarity and format
+                papers_with_scores.sort(key=lambda x: x[1], reverse=True)
+                
                 papers = []
-                for paper, similarity in results:
-                    # Only include papers with meaningful similarity (> 0.1)
-                    if similarity and similarity > 0.1:
-                        paper_dict = {
-                            "arxiv_id": paper.arxiv_id,
-                            "title": paper.title,
-                            "abstract": paper.abstract,
-                            "authors": paper.authors,
-                            "categories": paper.categories,
-                            "published_date": paper.published_date.isoformat() if paper.published_date else None,
-                            "doi": paper.doi,
-                            "primary_category": paper.primary_category,
-                            "similarity": float(similarity)
-                        }
-                        papers.append(paper_dict)
-
-                self.logger.info(f"Found {len(papers)} relevant papers with similarity > 0.1")
+                for paper, similarity in papers_with_scores[:12]:  # Top 12 results
+                    papers.append({
+                        "arxiv_id": paper.arxiv_id,
+                        "title": paper.title,
+                        "abstract": paper.abstract,
+                        "authors": paper.authors,
+                        "categories": paper.categories,
+                        "published_date": paper.published_date.isoformat() if paper.published_date else None,
+                        "doi": paper.doi,
+                        "primary_category": paper.primary_category,
+                        "similarity": float(similarity)
+                    })
                 
-                # If no papers found with good similarity, fall back to keyword search
-                if not papers:
-                    self.logger.info("No papers found with good similarity, falling back to keyword search")
-                    return await self._search_papers_by_keywords(query, intent, db)
-                
+                self.logger.info(f"Found {len(papers)} papers using keyword search")
                 return papers
-
+                
         except Exception as e:
-            self.logger.error(f"Error searching papers: {str(e)}", exc_info=True)
-            # Fall back to keyword search on error
-            try:
-                with get_db() as db:
-                    return await self._search_papers_by_keywords(query, intent, db)
-            except:
-                return []
+            self.logger.error(f"Error in paper search: {str(e)}", exc_info=True)
+            return []
 
     async def _search_papers_by_keywords(self, query: str, intent: Dict[str, Any], db) -> List[Dict[str, Any]]:
         """
@@ -299,6 +342,9 @@ class ChatAgent(BaseAgent):
             # Convert results to dictionaries
             papers = []
             for paper in results:
+                # Calculate keyword-based similarity
+                similarity = self._calculate_keyword_similarity(query, paper)
+                
                 paper_dict = {
                     "arxiv_id": paper.arxiv_id,
                     "title": paper.title,
@@ -308,9 +354,12 @@ class ChatAgent(BaseAgent):
                     "published_date": paper.published_date.isoformat() if paper.published_date else None,
                     "doi": paper.doi,
                     "primary_category": paper.primary_category,
-                    "similarity": 0.0  # No similarity for keyword search
+                    "similarity": similarity
                 }
                 papers.append(paper_dict)
+            
+            # Sort by similarity score (descending)
+            papers.sort(key=lambda x: x.get('similarity', 0.0), reverse=True)
 
             self.logger.info(f"Found {len(papers)} papers using keyword search")
             return papers
@@ -520,6 +569,112 @@ class ChatAgent(BaseAgent):
         
         return [topic for topic in common_topics if topic in text.lower()]
     
+    def _calculate_keyword_similarity(self, query: str, paper: Arxiv) -> float:
+        """
+        Fast and smart similarity calculation optimized for limited database context
+        Uses weighted scoring based on field importance and relevance
+        """
+        try:
+            query_lower = query.lower().strip()
+            if not query_lower:
+                return 0.0
+            
+            # Extract key terms from query (remove common words)
+            stop_words = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'from', 'as', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must', 'can', 'this', 'that', 'these', 'those'}
+            query_words = [word for word in re.findall(r'\b\w+\b', query_lower) if word not in stop_words and len(word) > 2]
+            
+            if not query_words:
+                return 0.0
+            
+            # Initialize scoring components
+            title_score = 0.0
+            abstract_score = 0.0
+            category_score = 0.0
+            author_score = 0.0
+            
+            # 1. TITLE SCORING (40% weight - most important)
+            title_lower = paper.title.lower()
+            title_words = re.findall(r'\b\w+\b', title_lower)
+            
+            # Exact phrase matching in title (high value)
+            if query_lower in title_lower:
+                title_score += 1.0
+            
+            # Word matching in title
+            title_matches = sum(1 for word in query_words if word in title_lower)
+            title_score += (title_matches / len(query_words)) * 0.8
+            
+            # Consecutive word matching (phrases)
+            for i in range(len(query_words) - 1):
+                phrase = ' '.join(query_words[i:i+2])
+                if phrase in title_lower:
+                    title_score += 0.3
+            
+            # 2. ABSTRACT SCORING (30% weight)
+            abstract_lower = paper.abstract.lower()
+            
+            # Key word density in abstract
+            abstract_matches = sum(1 for word in query_words if word in abstract_lower)
+            abstract_score = (abstract_matches / len(query_words)) * 0.7
+            
+            # Boost for early occurrence in abstract (first 200 chars)
+            abstract_start = abstract_lower[:200]
+            early_matches = sum(1 for word in query_words if word in abstract_start)
+            abstract_score += (early_matches / len(query_words)) * 0.3
+            
+            # 3. CATEGORY SCORING (20% weight)
+            for category in paper.categories:
+                category_lower = category.lower()
+                
+                # Direct category match
+                if any(word in category_lower for word in query_words):
+                    category_score += 0.5
+                
+                # Category hierarchy matching
+                if category_lower.startswith('cs.') and any(tech_word in query_lower for tech_word in ['machine', 'learning', 'ai', 'algorithm', 'computer', 'data']):
+                    category_score += 0.3
+                elif category_lower.startswith('math.') and any(math_word in query_lower for math_word in ['equation', 'theorem', 'proof', 'analysis', 'algebra']):
+                    category_score += 0.3
+                elif category_lower.startswith('physics.') and any(phys_word in query_lower for phys_word in ['quantum', 'particle', 'energy', 'field']):
+                    category_score += 0.3
+            
+            # 4. AUTHOR SCORING (10% weight)
+            if paper.authors:
+                for author in paper.authors:
+                    author_lower = author.lower()
+                    if any(word in author_lower for word in query_words):
+                        author_score += 0.5
+                        break  # Only count once per paper
+            
+            # 5. RECENCY BOOST (time-based relevance)
+            recency_score = 0.0
+            if paper.published_date:
+                from datetime import datetime
+                days_old = (datetime.now() - paper.published_date).days
+                if days_old < 365:  # Last year
+                    recency_score = 0.2
+                elif days_old < 365 * 3:  # Last 3 years
+                    recency_score = 0.1
+            
+            # 6. COMBINE SCORES WITH WEIGHTS
+            final_score = (
+                title_score * 0.40 +      # Title is most important
+                abstract_score * 0.30 +   # Abstract content
+                category_score * 0.20 +   # Category relevance
+                author_score * 0.10 +     # Author matching
+                recency_score            # Recency boost
+            )
+            
+            # Cap at 1.0 and ensure minimum threshold
+            final_score = min(final_score, 1.0)
+            
+            # Apply minimum threshold - papers below 0.1 are likely irrelevant
+            return max(final_score, 0.0) if final_score >= 0.1 else 0.0
+            
+        except Exception as e:
+            self.logger.error(f"Error calculating similarity: {str(e)}")
+            return 0.0
+    
     async def _get_embedding(self, text: str) -> Optional[List[float]]:
         """
         Get embedding for text using OpenAI API
@@ -573,67 +728,151 @@ class ChatAgent(BaseAgent):
             "comment": paper.comment
         }
     
+    def _count_tokens(self, text: str) -> int:
+        """
+        Estimate token count (rough approximation: 1 token ≈ 4 characters)
+        """
+        return len(text) // 4
+
+    def _truncate_papers_for_context(self, papers: List[Dict[str, Any]], max_tokens: int = 8000) -> List[Dict[str, Any]]:
+        """
+        Truncate papers list to fit within token limits
+        """
+        if not papers:
+            return papers
+        
+        truncated_papers = []
+        current_tokens = 0
+        
+        for paper in papers:
+            # Create a minimal version of the paper for token counting
+            paper_summary = {
+                "arxiv_id": paper["arxiv_id"],
+                "title": paper["title"],
+                "abstract": paper["abstract"][:300] + "..." if len(paper["abstract"]) > 300 else paper["abstract"],
+                "authors": paper["authors"][:3],  # Only first 3 authors
+                "categories": paper["categories"],
+                "published_date": paper["published_date"],
+                "similarity": paper.get("similarity", 0.0)
+            }
+            
+            # Estimate tokens for this paper
+            paper_text = json.dumps(paper_summary)
+            paper_tokens = self._count_tokens(paper_text)
+            
+            # Check if adding this paper would exceed the limit
+            if current_tokens + paper_tokens > max_tokens:
+                break
+                
+            truncated_papers.append(paper_summary)
+            current_tokens += paper_tokens
+        
+        self.logger.info(f"Truncated papers: {len(papers)} -> {len(truncated_papers)} (estimated {current_tokens} tokens)")
+        return truncated_papers
+
     async def _generate_response(self, query: str, intent: Dict[str, Any], arxiv_results: List[Dict[str, Any]], context: Dict[str, Any]) -> Dict[str, str]:
         """
         Generate a response based on the query, intent, and search results
         """
         try:
-            # Prepare context for the AI
+            # 1. TRUNCATE PAPERS TO PREVENT TOKEN OVERFLOW
+            truncated_papers = self._truncate_papers_for_context(arxiv_results, max_tokens=6000)
+            
+            # 2. Prepare context for the AI with truncated data
             response_context = {
                 "query": query,
                 "intent_type": intent.get("type", "general_query"),
-                "has_papers": len(arxiv_results) > 0,
-                "papers": arxiv_results,
+                "has_papers": len(truncated_papers) > 0,
+                "papers": truncated_papers,
                 "context": context,
                 "search_params": intent.get("search_params", {}),
                 "follow_up_questions": intent.get("follow_up_questions", [])
             }
             
-            # Select appropriate prompt template
+            # 3. Select appropriate prompt template
             if intent.get("type") == "paper_search":
-                if arxiv_results:
+                if truncated_papers:
                     prompt = CHAT_AGENT_PROMPTS["paper_search_with_results"]
                 else:
                     prompt = CHAT_AGENT_PROMPTS["paper_search_no_results"]
             else:
                 prompt = CHAT_AGENT_PROMPTS["general_query"]
             
-            # Format the prompt with safe string formatting
+            # 4. Format the prompt with safe string formatting
             try:
-                formatted_prompt = prompt.format(
-                    query=response_context["query"],
-                    intent_type=response_context["intent_type"],
-                    has_papers=response_context["has_papers"],
-                    papers=json.dumps(response_context["papers"], indent=2),
-                    context=json.dumps(response_context["context"], indent=2),
-                    search_params=json.dumps(response_context["search_params"], indent=2),
-                    follow_up_questions=json.dumps(response_context["follow_up_questions"], indent=2)
-                )
+                # Generate insights if we have papers and the prompt needs them
+                insights_text = ""
+                if truncated_papers and "{insights" in prompt:
+                    insights = await self._generate_research_insights(truncated_papers, intent)
+                    # Create CONCISE insights summary
+                    insights_parts = []
+                    if insights.get("trends", {}).get("categories"):
+                        top_cats = list(insights["trends"]["categories"].keys())[:3]
+                        insights_parts.append(f"- Top categories: {', '.join(top_cats)}")
+                    if insights.get("authors", {}).get("top_authors"):
+                        top_authors = list(insights["authors"]["top_authors"].keys())[:2]
+                        insights_parts.append(f"- Key authors: {', '.join(top_authors)}")
+                    insights_text = "\n".join(insights_parts)
+                
+                # Create COMPACT paper summary for prompt
+                papers_summary = f"{len(truncated_papers)} papers found"
+                if truncated_papers:
+                    papers_summary += f" (top similarity: {truncated_papers[0].get('similarity', 0):.1%})"
+                
+                # Prepare all possible variables for the prompt
+                format_variables = {
+                    "query": response_context["query"],
+                    "intent_type": response_context["intent_type"],
+                    "has_papers": response_context["has_papers"],
+                    "papers": papers_summary,  # Use summary instead of full data
+                    "arxiv": papers_summary,   # Use summary instead of full data
+                    "context": json.dumps(response_context["context"]) if response_context["context"] else "{}",
+                    "search_params": json.dumps(response_context["search_params"]),
+                    "follow_up_questions": json.dumps(response_context["follow_up_questions"]),
+                    "insights": insights_text
+                }
+                
+                formatted_prompt = prompt.format(**format_variables)
+                
+                # 5. FINAL TOKEN CHECK
+                prompt_tokens = self._count_tokens(formatted_prompt)
+                system_tokens = self._count_tokens(CHAT_AGENT_PROMPTS["system"])
+                total_tokens = prompt_tokens + system_tokens
+                
+                self.logger.info(f"Token usage: {total_tokens} tokens (prompt: {prompt_tokens}, system: {system_tokens})")
+                
+                # If still too long, use minimal prompt
+                if total_tokens > 15000:  # Leave buffer for response
+                    self.logger.warning("Prompt still too long, using minimal format")
+                    formatted_prompt = f"Query: {query}\nFound {len(truncated_papers)} relevant papers.\nProvide a concise response."
+                
             except KeyError as e:
                 self.logger.error(f"Error formatting prompt: {str(e)}")
-                formatted_prompt = f"Query: {query}\nIntent: {intent.get('type', 'general_query')}\nResults: {len(arxiv_results)} papers found"
+                formatted_prompt = f"Query: {query}\nIntent: {intent.get('type', 'general_query')}\nResults: {len(truncated_papers)} papers found"
             
-            # Generate completion
+            # 6. Generate completion with smaller context
             completion = await openai.ChatCompletion.acreate(
                 model="gpt-3.5-turbo",
                 messages=[
                     {"role": "system", "content": CHAT_AGENT_PROMPTS["system"]},
                     {"role": "user", "content": formatted_prompt}
                 ],
-                temperature=0.7
+                temperature=0.7,
+                max_tokens=1000  # Limit response length
             )
             
             response_text = completion.choices[0].message.content
             
-            # Generate HTML version of the response
+            # 7. Generate HTML version using ORIGINAL paper list (not truncated)
             html_response = self._format_response_as_html(response_text, arxiv_results, intent)
             
             return {
                 "response": response_text,
                 "html_response": html_response,
-                "arxiv": arxiv_results,
+                "arxiv": arxiv_results,  # Return full results for frontend
                 "intent": intent
             }
+            
         except Exception as e:
             self.logger.error(f"Error generating response: {str(e)}", exc_info=True)
             return {
