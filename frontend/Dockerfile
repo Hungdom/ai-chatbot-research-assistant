@@ -15,7 +15,7 @@ COPY . .
 RUN mkdir -p public
 
 # Install additional dependencies
-RUN npm install react-markdown remark-gfm react-syntax-highlighter
+RUN npm install react-markdown remark-gfm react-syntax-highlighter chart.js react-chartjs-2
 
 EXPOSE 3000
 

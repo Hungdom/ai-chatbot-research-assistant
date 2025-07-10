@@ -1,0 +1,4 @@
+# ./logstash/config/logstash.yml
+pipeline.workers: 2
+pipeline.batch.size: 125
+pipeline.batch.delay: 50

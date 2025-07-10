@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>ArXiv Paper Search</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 40px;
+        }
+        #searchbox {
+            width: 60%;
+            padding: 10px;
+            font-size: 16px;
+        }
+        .result {
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #ddd;
+        }
+        .result h3 {
+            margin: 0 0 6px 0;
+        }
+        .result p {
+            margin: 4px 0;
+        }
+        #results p {
+            font-style: italic;
+            color: #555;
+        }
+    </style>
+</head>
+<body>
+    <center>
+        <h1>ArXiv Paper Search</h1>
+        <input id="searchbox" type="text" placeholder="Nhập từ khóa hoặc năm (4 chữ số)" />
+        <div id="results" style="margin-top: 30px; width: 70%;"></div>
+    </center>
+
+    <script>
+        const searchbox = document.getElementById("searchbox");
+        let requestInFlight = null;
+
+        searchbox.addEventListener('keyup', debounce(() => {
+            const q = searchbox.value.trim();
+            if (q.length < 2) {
+                document.getElementById("results").innerHTML = "<p>Vui lòng nhập ít nhất 2 ký tự</p>";
+                return;
+            }
+
+            const url = "http://localhost:8000/search?term=" + encodeURIComponent(q);
+
+            let currentRequest = {};
+            requestInFlight = currentRequest;
+
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    if (requestInFlight !== currentRequest) return;
+
+                    if (!data.results || data.results.length === 0) {
+                        document.getElementById("results").innerHTML = "<p>Không tìm thấy kết quả nào</p>";
+                        return;
+                    }
+
+                    // Hàm format ngày thành yyyy-MM-dd
+                    function formatDate(dateStr) {
+                        if (!dateStr) return "Không rõ năm";
+                        if (/^\d{4}$/.test(dateStr)) return dateStr;
+
+                        let date = new Date(dateStr);
+                        if (isNaN(date)) return "Không rõ năm";
+
+                        let year = date.getFullYear();
+                        let month = (date.getMonth() + 1).toString().padStart(2, '0');
+                        let day = date.getDate().toString().padStart(2, '0');
+                        return `${year}-${month}-${day}`;
+                    }
+
+                    let resultsHtml = data.results.map(item => {
+                        const title = item.title || "Không có tiêu đề";
+                        const authors = Array.isArray(item.authors) ? item.authors.join(", ") : (item.authors || "Không rõ tác giả");
+                        let dateRaw = item.year || item.published_date || item.updated_date;
+                        const formattedDate = formatDate(dateRaw);
+                        const categories = Array.isArray(item.categories) ? item.categories.join(", ") : (item.categories || "Không rõ danh mục");
+                        const arxivId = item.arxiv_id || "Không có arXiv ID";
+
+                        return `
+                            <div class="result">
+                                <h3>${escapeHtml(title)}</h3>
+                                <p><strong>ArXiv ID:</strong> ${escapeHtml(arxivId)}</p>
+                                <p><strong>Tác giả:</strong> ${escapeHtml(authors)}</p>
+                                <p><strong>Ngày:</strong> ${escapeHtml(formattedDate)}</p>
+                                <p><strong>Danh mục:</strong> ${escapeHtml(categories)}</p>
+                            </div>
+                        `;
+                    }).join("");
+
+                    document.getElementById("results").innerHTML = resultsHtml;
+                })
+                .catch(err => {
+                    document.getElementById("results").innerHTML = `<p style="color: red;">Lỗi: ${escapeHtml(err.message)}</p>`;
+                });
+
+        }, 300));
+
+        function debounce(func, wait, immediate) {
+            let timeout;
+            return function() {
+                let context = this, args = arguments;
+                let later = () => {
+                    timeout = null;
+                    if (!immediate) func.apply(context, args);
+                };
+                let callNow = immediate && !timeout;
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+                if (callNow) func.apply(context, args);
+            };
+        }
+
+        function escapeHtml(text) {
+            if (text === null || text === undefined) return "";
+            return String(text)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+    </script>
+</body>
+</html>

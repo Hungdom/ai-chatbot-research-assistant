@@ -1,154 +1,130 @@
-# Research Assistant Chat Bot
+# Research Assistant Chatbot
 
-A sophisticated research assistant application that helps users find and analyze academic papers using natural language queries. The system combines the power of GPT-4 with a PostgreSQL database to provide intelligent responses about research papers.
-
-## Architecture
-
-The project follows a modern microservices architecture with the following components:
-
-### Backend (FastAPI)
-- **API Layer**: Built with FastAPI, providing RESTful endpoints for chat interactions
-- **Database Layer**: PostgreSQL database with SQLAlchemy ORM
-- **AI Integration**: OpenAI GPT-4 for natural language processing and response generation
-- **CORS Support**: Configured for frontend integration
-
-### Frontend (React)
-- Modern web interface for user interactions
-- Real-time chat interface
-- Filtering capabilities for papers
-
-## Components
-
-### Database Schema
-The system uses a PostgreSQL database with the following main table:
-
-#### Papers Table
-- `id`: Primary key
-- `title`: Paper title
-- `abstract`: Paper abstract
-- `authors`: Array of author names
-- `keywords`: Array of keywords
-- `year`: Publication year
-
-### API Endpoints
-
-1. **POST /chat**
-   - Main endpoint for chat interactions
-   - Accepts queries with optional filters
-   - Returns AI-generated responses with relevant papers
-
-2. **GET /**
-   - Health check endpoint
-   - Returns API status
-
-## Setup Instructions
-
-### Prerequisites
-- Python 3.8+
-- PostgreSQL
-- Node.js and npm
-- OpenAI API key
-
-### Environment Variables
-Create a `.env` file in the backend directory with:
-```
-DATABASE_URL=postgresql://postgres:postgres@postgres_db:5432/research_db
-OPENAI_API_KEY=your_openai_api_key
-```
-
-### Backend Setup
-1. Navigate to the backend directory:
-   ```bash
-   cd backend
-   ```
-
-2. Create and activate a virtual environment:
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
-
-3. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. Start the backend server:
-   ```bash
-   uvicorn main:app --reload
-   ```
-
-### Frontend Setup
-1. Navigate to the frontend directory:
-   ```bash
-   cd frontend
-   ```
-
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-
-3. Start the development server:
-   ```bash
-   npm start
-   ```
+A powerful AI-powered research assistant that helps researchers find, analyze, and understand academic papers from arXiv.
 
 ## Features
 
-- Natural language query processing
-- Paper filtering by year and keywords
-- AI-powered responses based on paper content
-- Real-time chat interface
-- Paper metadata display
-- CORS support for local development
+### Chat Interface
+- Interactive chat-based interface for research queries
+- Context-aware conversations that maintain session history
+- Support for HTML-formatted responses
+- Session management with persistence
 
-## API Usage
+### Search Capabilities
+- Advanced paper search with multiple filters:
+  - Year-based filtering
+  - Keyword search in titles and abstracts
+  - Category-based filtering
+- Real-time search results with detailed paper information
+- Support for up to 50 results per search
+- Comprehensive paper metadata including:
+  - Title and authors
+  - Abstract and categories
+  - Publication and update dates
+  - DOI and journal references
 
-### Chat Endpoint
-```python
-POST /chat
-{
-    "query": "What are the latest developments in quantum computing?",
-    "year_filter": 2023,  # Optional
-    "keywords": ["quantum", "computing"]  # Optional
-}
+### Session Management
+- Create and manage multiple chat sessions
+- View session history with timestamps
+- Update and delete sessions as needed
+- Persistent storage of conversation context
+
+## Tech Stack
+
+### Backend
+- FastAPI for high-performance API endpoints
+- SQLAlchemy for database operations
+- PostgreSQL for data storage
+- Uvicorn as ASGI server
+- Python 3.8+
+
+### Frontend
+- React for the user interface
+- Tailwind CSS for styling
+- Chart.js for data visualization
+- Heroicons for UI icons
+
+## API Endpoints
+
+### Chat
+- `POST /api/chat` - Process chat messages
+- `GET /api/sessions` - List all chat sessions
+- `GET /api/sessions/{session_id}` - Get specific session
+- `DELETE /api/sessions/{session_id}` - Delete session
+- `PUT /api/sessions/{session_id}` - Update session
+
+### Search
+- `POST /api/search` - Search for papers with filters
+  - Supports year and keyword filters
+  - Returns papers with full metadata
+  - Includes summary of search results
+
+### Health Check
+- `GET /api/health` - Check API health status
+
+## Getting Started
+
+### Prerequisites
+- Docker and Docker Compose
+- Node.js 16+
+- Python 3.8+
+
+### Installation
+
+1. Clone the repository:
+```bash
+git clone <repository-url>
+cd research-assistant-chatbot
 ```
 
-Response:
-```python
-{
-    "response": "AI-generated response...",
-    "papers": [
-        {
-            "title": "Paper title",
-            "abstract": "Paper abstract",
-            "authors": ["Author 1", "Author 2"],
-            "year": 2023,
-            "keywords": ["keyword1", "keyword2"]
-        }
-    ]
-}
+2. Set up environment variables:
+```bash
+cp .env.example .env
+# Edit .env with your configuration
 ```
+
+3. Start the services:
+```bash
+docker-compose up --build
+```
+
+4. Access the application:
+- Frontend: http://localhost:3000
+- Backend API: http://localhost:8000
+- API Documentation: http://localhost:8000/docs
 
 ## Development
 
-### Adding New Features
-1. Backend changes should be made in the `backend` directory
-2. Frontend changes should be made in the `frontend` directory
-3. Update the database schema in `backend/main.py`
-4. Add new API endpoints as needed
+### Backend Development
+```bash
+cd backend
+python -m venv venv
+source venv/bin/activate  # or `venv\Scripts\activate` on Windows
+pip install -r requirements.txt
+uvicorn main:app --reload
+```
 
-### Testing
-- Backend tests can be added in the `backend/tests` directory
-- Frontend tests can be added in the `frontend/src/tests` directory
+### Frontend Development
+```bash
+cd frontend
+npm install
+npm start
+```
 
 ## Contributing
+
 1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a Pull Request
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
 ## License
-This project is licensed under the MIT License - see the LICENSE file for details. 
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Acknowledgments
+
+- arXiv for providing the research paper dataset
+- FastAPI for the excellent web framework
+- React and Tailwind CSS for the frontend tools 

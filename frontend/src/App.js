@@ -1,21 +1,27 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Layout from './components/Layout';
+import Chat from './pages/Chat';
 import Home from './pages/Home';
 import Search from './pages/Search';
-import Chat from './pages/Chat';
+import DatasetInsights from './pages/DatasetInsights';
+import { ThemeProvider } from './context/ThemeContext';
 
 function App() {
   return (
-    <Router>
-      <Layout>
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/chat" element={<Chat />} />
-          <Route path="/search" element={<Search />} />
-        </Routes>
-      </Layout>
-    </Router>
+    <ThemeProvider>
+      <Router>
+        <Layout>
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/chat" element={<Chat />} />
+            <Route path="/chat/:sessionId" element={<Chat />} />
+            <Route path="/search" element={<Search />} />
+            <Route path="/dataset" element={<DatasetInsights />} />
+          </Routes>
+        </Layout>
+      </Router>
+    </ThemeProvider>
   );
 }
 
