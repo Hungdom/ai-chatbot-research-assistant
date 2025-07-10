@@ -123,175 +123,81 @@ class ChatAgent(BaseAgent):
     
     async def _analyze_intent(self, query: str) -> Dict[str, Any]:
         """
-        Analyze the user's query to determine intent and required actions
-        """
-        completion = await openai.ChatCompletion.acreate(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": CHAT_AGENT_PROMPTS["intent_analysis"]},
-                {"role": "user", "content": query}
-            ],
-            temperature=0.3
-        )
-        
-        # Parse the response to determine intent
-        intent_text = completion.choices[0].message.content
-        intent = {
-            "type": "general_query",  # default type
-            "needs_search": False,
-            "search_params": {},
-            "follow_up_questions": []
-        }
-        
-        # Determine if we need to search for papers
-        if any(keyword in query.lower() for keyword in ["paper", "research", "study", "find", "search", "look for"]):
-            intent["needs_search"] = True
-            intent["type"] = "paper_search"
-            
-            # Extract search parameters
-            if "year" in query.lower():
-                intent["search_params"]["year"] = self._extract_year(query)
-            if "category" in query.lower() or "field" in query.lower():
-                intent["search_params"]["category"] = self._extract_category(query)
-        
-        # Generate follow-up questions
-        intent["follow_up_questions"] = await self._generate_follow_up_questions(query, intent)
-        
-        return intent
-    
-    async def _search_relevant_papers(self, query: str, intent: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """
-        Optimized paper search with efficient pre-filtering and minimal API calls
+        FAST intent analysis optimized for free tier
         """
         try:
-            self.logger.info("Starting optimized paper search...")
+            # SKIP HEAVY AI ANALYSIS - use simple pattern matching instead
+            query_lower = query.lower()
             
-            with get_db() as db:
-                # 1. FAST PRE-FILTERING
-                # Extract key terms
-                query_lower = query.lower().strip()
-                stop_words = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'from', 'as', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must', 'can', 'this', 'that', 'these', 'those'}
-                key_terms = [word for word in re.findall(r'\b\w+\b', query_lower) if word not in stop_words and len(word) > 2]
-                
-                # 2. BUILD EFFICIENT QUERY
-                base_query = select(Arxiv)
-                conditions = []
-                
-                # Title/Abstract filtering with key terms
-                if key_terms:
-                    text_conditions = []
-                    for term in key_terms[:3]:  # Top 3 terms only
-                        text_conditions.extend([
-                            Arxiv.title.ilike(f'%{term}%'),
-                            Arxiv.abstract.ilike(f'%{term}%')
-                        ])
-                    
-                    if text_conditions:
-                        conditions.append(or_(*text_conditions))
-                
-                # Category filtering
-                search_params = intent.get("search_params", {})
-                if search_params.get("category"):
-                    category = search_params["category"]
-                    conditions.append(
-                        or_(
-                            Arxiv.categories.contains([category]),
-                            Arxiv.primary_category == category
-                        )
-                    )
-                
-                # Year filtering
-                if search_params.get("year"):
-                    year = search_params["year"]
-                    conditions.append(extract('year', Arxiv.published_date) == year)
-                
-                # Apply conditions
-                if conditions:
-                    base_query = base_query.where(or_(*conditions))
-                
-                # 3. TRY EMBEDDING SEARCH FIRST (if available)
-                papers = []
-                
-                # Quick embedding check - don't generate embedding if no papers have embeddings
-                has_embeddings = db.execute(
-                    text("SELECT EXISTS(SELECT 1 FROM arxiv WHERE embedding IS NOT NULL LIMIT 1)")
-                ).scalar()
-                
-                if has_embeddings:
-                    query_embedding = await self._get_embedding(query)
-                    if query_embedding:
-                        try:
-                            embedding_str = '[' + ','.join(map(str, query_embedding)) + ']'
-                            similarity_expr = text(
-                                f"cosine_similarity(arxiv.embedding, '{embedding_str}'::vector) as similarity"
-                            )
-                            
-                            # Embedding query with pre-filtering
-                            embedding_query = select(Arxiv, similarity_expr).select_from(Arxiv).where(
-                                and_(
-                                    Arxiv.embedding.is_not(None),
-                                    *conditions if conditions else [text('true')]
-                                )
-                            ).order_by(text("similarity DESC")).limit(12)
-                            
-                            results = db.execute(embedding_query).all()
-                            
-                            for result in results:
-                                if isinstance(result, tuple) and len(result) == 2:
-                                    paper, similarity = result
-                                    if similarity and similarity > 0.2:  # Higher threshold
-                                        papers.append({
-                                            "arxiv_id": paper.arxiv_id,
-                                            "title": paper.title,
-                                            "abstract": paper.abstract,
-                                            "authors": paper.authors,
-                                            "categories": paper.categories,
-                                            "published_date": paper.published_date.isoformat() if paper.published_date else None,
-                                            "doi": paper.doi,
-                                            "primary_category": paper.primary_category,
-                                            "similarity": float(similarity)
-                                        })
-                            
-                            if papers:
-                                self.logger.info(f"Found {len(papers)} papers using embedding search")
-                                return papers
-                        except Exception as e:
-                            self.logger.warning(f"Embedding search failed: {str(e)}")
-                
-                # 4. FALLBACK TO KEYWORD SEARCH
-                # Order by recent papers first, limit to reduce processing
-                base_query = base_query.order_by(Arxiv.published_date.desc()).limit(25)
-                results = db.execute(base_query).scalars().all()
-                
-                # Calculate similarity and filter
-                papers_with_scores = []
-                for paper in results:
-                    similarity = self._calculate_keyword_similarity(query, paper)
-                    if similarity > 0.0:
-                        papers_with_scores.append((paper, similarity))
-                
-                # Sort by similarity and format
-                papers_with_scores.sort(key=lambda x: x[1], reverse=True)
-                
-                papers = []
-                for paper, similarity in papers_with_scores[:12]:  # Top 12 results
-                    papers.append({
-                        "arxiv_id": paper.arxiv_id,
-                        "title": paper.title,
-                        "abstract": paper.abstract,
-                        "authors": paper.authors,
-                        "categories": paper.categories,
-                        "published_date": paper.published_date.isoformat() if paper.published_date else None,
-                        "doi": paper.doi,
-                        "primary_category": paper.primary_category,
-                        "similarity": float(similarity)
-                    })
-                
-                self.logger.info(f"Found {len(papers)} papers using keyword search")
-                return papers
-                
+            # Fast intent detection using keywords
+            intent = {
+                "type": "paper_search",  # Default to paper search
+                "needs_search": True,
+                "search_params": {},
+                "follow_up_questions": []
+            }
+            
+            # Quick keyword-based intent classification
+            if any(word in query_lower for word in ['trend', 'trending', 'recent', 'latest', 'new']):
+                intent["type"] = "trend_analysis"
+                intent["search_params"]["recent_focus"] = True
+            elif any(word in query_lower for word in ['author', 'researcher', 'scientist']):
+                intent["type"] = "author_search"
+            elif any(word in query_lower for word in ['what', 'how', 'why', 'explain']):
+                intent["type"] = "general_question"
+                intent["needs_search"] = len(query_lower.split()) > 3  # Only search for complex questions
+            
+            # Fast category detection
+            categories = []
+            if any(term in query_lower for term in ['machine learning', 'ml', 'neural', 'deep learning']):
+                categories.append('cs.LG')
+            elif any(term in query_lower for term in ['math', 'mathematics', 'theorem']):
+                categories.append('math.AG')
+            elif any(term in query_lower for term in ['physics', 'quantum']):
+                categories.append('physics.gen-ph')
+            elif any(term in query_lower for term in ['computer vision', 'cv', 'image']):
+                categories.append('cs.CV')
+            elif any(term in query_lower for term in ['nlp', 'natural language', 'text']):
+                categories.append('cs.CL')
+            
+            if categories:
+                intent["search_params"]["categories"] = categories
+            
+            # Skip follow-up questions generation for speed
+            intent["follow_up_questions"] = []
+            
+            return intent
+            
         except Exception as e:
-            self.logger.error(f"Error in paper search: {str(e)}", exc_info=True)
+            self.logger.error(f"Error in fast intent analysis: {str(e)}")
+            return {
+                "type": "paper_search",
+                "needs_search": True,
+                "search_params": {},
+                "follow_up_questions": []
+            }
+
+    async def _search_relevant_papers(self, query: str, intent: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """
+        FAST paper search optimized for free tier
+        """
+        try:
+            self.logger.info(f"Fast paper search for: {query}")
+            
+            # Use the optimized smart search
+            papers = await self.smart_search_agent.smart_search(query, intent)
+            
+            # Quick validation and limiting
+            if papers:
+                # Limit to top 10 for speed
+                limited_papers = papers[:10]
+                self.logger.info(f"Fast search returned {len(limited_papers)} papers")
+                return limited_papers
+            
+            return []
+            
+        except Exception as e:
+            self.logger.error(f"Error in fast paper search: {str(e)}")
             return []
 
     async def _search_papers_by_keywords(self, query: str, intent: Dict[str, Any], db) -> List[Dict[str, Any]]:
@@ -728,6 +634,40 @@ class ChatAgent(BaseAgent):
             "comment": paper.comment
         }
     
+    def _format_simple_html_response(self, response_text: str, papers: List[Dict[str, Any]]) -> str:
+        """
+        Generate simple HTML response for speed
+        """
+        html_parts = ['<div class="chat-response">']
+        
+        # Response text
+        html_parts.append(f'<p>{response_text}</p>')
+        
+        # Simple papers list
+        if papers:
+            html_parts.append(f'<h3>📚 {len(papers)} Papers Found</h3>')
+            
+            for i, paper in enumerate(papers[:8]):  # Limit to 8 for speed
+                html_parts.append('<div class="paper-card">')
+                html_parts.append(f'<h4><a href="https://arxiv.org/abs/{paper["arxiv_id"]}" target="_blank">{paper["title"]}</a></h4>')
+                html_parts.append(f'<p><strong>Authors:</strong> {", ".join(paper["authors"][:2])}</p>')
+                if paper.get("similarity", 0) > 0:
+                    html_parts.append(f'<p><strong>Relevance:</strong> {paper["similarity"]:.1%}</p>')
+                html_parts.append('</div>')
+        
+        # Simple CSS
+        html_parts.append('''
+        <style>
+            .chat-response { font-family: Arial, sans-serif; max-width: 800px; }
+            .paper-card { background: #f9f9f9; padding: 1em; margin: 0.5em 0; border-radius: 8px; }
+            .paper-card h4 { margin: 0 0 0.5em 0; }
+            .paper-card p { margin: 0.3em 0; }
+        </style>
+        ''')
+        
+        html_parts.append('</div>')
+        return '\n'.join(html_parts)
+
     def _count_tokens(self, text: str) -> int:
         """
         Estimate token count (rough approximation: 1 token ≈ 4 characters)
@@ -772,113 +712,49 @@ class ChatAgent(BaseAgent):
 
     async def _generate_response(self, query: str, intent: Dict[str, Any], arxiv_results: List[Dict[str, Any]], context: Dict[str, Any]) -> Dict[str, str]:
         """
-        Generate a response based on the query, intent, and search results
+        FAST response generation optimized for free tier
         """
         try:
-            # 1. TRUNCATE PAPERS TO PREVENT TOKEN OVERFLOW
-            truncated_papers = self._truncate_papers_for_context(arxiv_results, max_tokens=6000)
+            # 1. SUPER FAST PAPER TRUNCATION (even more aggressive)
+            truncated_papers = self._truncate_papers_for_context(arxiv_results, max_tokens=4000)  # Reduced from 6000
             
-            # 2. Prepare context for the AI with truncated data
-            response_context = {
-                "query": query,
-                "intent_type": intent.get("type", "general_query"),
-                "has_papers": len(truncated_papers) > 0,
-                "papers": truncated_papers,
-                "context": context,
-                "search_params": intent.get("search_params", {}),
-                "follow_up_questions": intent.get("follow_up_questions", [])
-            }
-            
-            # 3. Select appropriate prompt template
-            if intent.get("type") == "paper_search":
-                if truncated_papers:
-                    prompt = CHAT_AGENT_PROMPTS["paper_search_with_results"]
-                else:
-                    prompt = CHAT_AGENT_PROMPTS["paper_search_no_results"]
+            # 2. MINIMAL PROMPT GENERATION
+            if truncated_papers:
+                # Super concise prompt
+                papers_text = f"{len(truncated_papers)} papers found (top: {truncated_papers[0].get('similarity', 0):.1%} relevant)"
+                prompt = f"Query: {query}\nResults: {papers_text}\n\nProvide a brief, helpful response about these research papers."
             else:
-                prompt = CHAT_AGENT_PROMPTS["general_query"]
+                prompt = f"Query: {query}\n\nNo specific papers found. Provide brief guidance on this research topic."
             
-            # 4. Format the prompt with safe string formatting
-            try:
-                # Generate insights if we have papers and the prompt needs them
-                insights_text = ""
-                if truncated_papers and "{insights" in prompt:
-                    insights = await self._generate_research_insights(truncated_papers, intent)
-                    # Create CONCISE insights summary
-                    insights_parts = []
-                    if insights.get("trends", {}).get("categories"):
-                        top_cats = list(insights["trends"]["categories"].keys())[:3]
-                        insights_parts.append(f"- Top categories: {', '.join(top_cats)}")
-                    if insights.get("authors", {}).get("top_authors"):
-                        top_authors = list(insights["authors"]["top_authors"].keys())[:2]
-                        insights_parts.append(f"- Key authors: {', '.join(top_authors)}")
-                    insights_text = "\n".join(insights_parts)
-                
-                # Create COMPACT paper summary for prompt
-                papers_summary = f"{len(truncated_papers)} papers found"
-                if truncated_papers:
-                    papers_summary += f" (top similarity: {truncated_papers[0].get('similarity', 0):.1%})"
-                
-                # Prepare all possible variables for the prompt
-                format_variables = {
-                    "query": response_context["query"],
-                    "intent_type": response_context["intent_type"],
-                    "has_papers": response_context["has_papers"],
-                    "papers": papers_summary,  # Use summary instead of full data
-                    "arxiv": papers_summary,   # Use summary instead of full data
-                    "context": json.dumps(response_context["context"]) if response_context["context"] else "{}",
-                    "search_params": json.dumps(response_context["search_params"]),
-                    "follow_up_questions": json.dumps(response_context["follow_up_questions"]),
-                    "insights": insights_text
-                }
-                
-                formatted_prompt = prompt.format(**format_variables)
-                
-                # 5. FINAL TOKEN CHECK
-                prompt_tokens = self._count_tokens(formatted_prompt)
-                system_tokens = self._count_tokens(CHAT_AGENT_PROMPTS["system"])
-                total_tokens = prompt_tokens + system_tokens
-                
-                self.logger.info(f"Token usage: {total_tokens} tokens (prompt: {prompt_tokens}, system: {system_tokens})")
-                
-                # If still too long, use minimal prompt
-                if total_tokens > 15000:  # Leave buffer for response
-                    self.logger.warning("Prompt still too long, using minimal format")
-                    formatted_prompt = f"Query: {query}\nFound {len(truncated_papers)} relevant papers.\nProvide a concise response."
-                
-            except KeyError as e:
-                self.logger.error(f"Error formatting prompt: {str(e)}")
-                formatted_prompt = f"Query: {query}\nIntent: {intent.get('type', 'general_query')}\nResults: {len(truncated_papers)} papers found"
-            
-            # 6. Generate completion with smaller context
+            # 3. FASTER AI CALL (reduced max_tokens)
             completion = await openai.ChatCompletion.acreate(
                 model="gpt-3.5-turbo",
                 messages=[
-                    {"role": "system", "content": CHAT_AGENT_PROMPTS["system"]},
-                    {"role": "user", "content": formatted_prompt}
+                    {"role": "system", "content": "You are a helpful research assistant. Be concise and informative."},
+                    {"role": "user", "content": prompt}
                 ],
                 temperature=0.7,
-                max_tokens=1000  # Limit response length
+                max_tokens=500  # Reduced from 1000 for speed
             )
             
             response_text = completion.choices[0].message.content
             
-            # 7. Generate HTML version using ORIGINAL paper list (not truncated)
-            html_response = self._format_response_as_html(response_text, arxiv_results, intent)
+            # 4. SIMPLE HTML GENERATION
+            html_response = self._format_simple_html_response(response_text, arxiv_results)
             
             return {
                 "response": response_text,
                 "html_response": html_response,
-                "arxiv": arxiv_results,  # Return full results for frontend
+                "arxiv": arxiv_results,
                 "intent": intent
             }
             
         except Exception as e:
-            self.logger.error(f"Error generating response: {str(e)}", exc_info=True)
+            self.logger.error(f"Error in fast response generation: {str(e)}")
             return {
-                "response": "I apologize, but I encountered an error processing your request. Please try again.",
-                "html_response": "<div class='error-message'>I apologize, but I encountered an error processing your request. Please try again.</div>",
-                "arxiv": [],
+                "response": "I found some relevant papers for your query. Please try a more specific search for better results.",
+                "html_response": self._format_simple_html_response("I found some relevant papers for your query.", arxiv_results),
+                "arxiv": arxiv_results,
                 "intent": intent
             }
     

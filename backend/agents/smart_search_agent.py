@@ -15,6 +15,7 @@ from sqlalchemy import text, func, desc, or_, and_, extract
 from sqlalchemy.sql import select
 import logging
 import openai
+import time
 
 class SmartSearchAgent(BaseAgent):
     def __init__(self):
@@ -90,36 +91,37 @@ class SmartSearchAgent(BaseAgent):
 
     async def smart_search(self, query: str, context: Dict[str, Any] = None) -> List[Dict[str, Any]]:
         """
-        Main smart search method - TOKEN OPTIMIZED
+        FAST smart search optimized for free tier EC2
         """
         try:
-            self.logger.info(f"Smart search for: {query}")
+            start_time = time.time()
+            self.logger.info(f"Fast search for: {query}")
             
-            # 1. FAST PRELIMINARY ANALYSIS (avoid heavy AI calls)
+            # 1. QUICK ANALYSIS (no AI calls)
             query_params = await self._quick_analyze_query(query, context)
             
-            # 2. EXECUTE SMART SEARCH (efficient DB queries)
+            # 2. SINGLE FAST DB QUERY
             papers = await self._execute_smart_query(query, query_params)
             
-            # 3. CALCULATE SIMILARITY (optimized algorithm)
+            # 3. FAST SIMILARITY CALCULATION
             if papers:
                 papers_with_similarity = await self._calculate_smart_similarity(query, papers, query_params)
                 
-                # 4. SORT AND LIMIT RESULTS
+                # 4. QUICK SORT AND RETURN
                 papers_with_similarity.sort(key=lambda x: x.get('similarity', 0), reverse=True)
+                top_papers = papers_with_similarity[:12]  # Limit to 12 for speed
                 
-                # Keep only top results to avoid token overflow
-                top_papers = papers_with_similarity[:15]  # Reduced from 20
-                
-                self.logger.info(f"Smart search completed: {len(top_papers)} papers with avg similarity: {sum(p.get('similarity', 0) for p in top_papers) / len(top_papers):.3f}")
+                elapsed = time.time() - start_time
+                self.logger.info(f"Fast search completed in {elapsed:.2f}s: {len(top_papers)} papers")
                 
                 return top_papers
             
-            return []
+            # Fallback: return recent papers if no smart results
+            return await self._get_recent_papers_fallback()
             
         except Exception as e:
-            self.logger.error(f"Error in smart search: {str(e)}")
-            return []
+            self.logger.error(f"Error in fast search: {str(e)}")
+            return await self._get_recent_papers_fallback()
 
     async def _quick_analyze_query(self, query: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
         """
@@ -169,135 +171,129 @@ class SmartSearchAgent(BaseAgent):
 
     async def _execute_smart_query(self, query: str, params: Dict[str, Any]) -> List[Any]:
         """
-        Execute optimized database query
+        Execute FAST database query optimized for free tier EC2
         """
         try:
             with get_db() as db:
-                # START WITH EFFICIENT BASE QUERY
-                query_obj = select(Arxiv)
+                # STRATEGY: Use simple, indexed queries instead of complex text search
                 
-                # Add category filters if detected
+                # 1. FAST CATEGORY-BASED SEARCH (if categories detected)
                 if params.get("categories"):
-                    category_conditions = []
-                    for category in params["categories"][:3]:  # Limit categories
-                        category_conditions.append(Arxiv.categories.contains([category]))
-                    if category_conditions:
-                        query_obj = query_obj.where(or_(*category_conditions))
+                    category = params["categories"][0]  # Use only first category for speed
+                    
+                    # Simple category filter (much faster than complex contains)
+                    query_obj = select(Arxiv).where(
+                        Arxiv.primary_category == category
+                    ).order_by(Arxiv.published_date.desc()).limit(20)
+                    
+                    results = db.execute(query_obj).scalars().all()
+                    if results:
+                        self.logger.info(f"Fast category search returned {len(results)} papers")
+                        return results
                 
-                # Add year filters if detected
+                # 2. FAST YEAR-BASED SEARCH (if years detected)
                 if params.get("years"):
-                    year_conditions = []
-                    for year in params["years"][:2]:  # Limit years
-                        year_conditions.append(extract('year', Arxiv.published_date) == year)
-                    if year_conditions:
-                        query_obj = query_obj.where(or_(*year_conditions))
+                    year = params["years"][0]  # Use only first year
+                    
+                    query_obj = select(Arxiv).where(
+                        extract('year', Arxiv.published_date) == year
+                    ).order_by(Arxiv.published_date.desc()).limit(20)
+                    
+                    results = db.execute(query_obj).scalars().all()
+                    if results:
+                        self.logger.info(f"Fast year search returned {len(results)} papers")
+                        return results
                 
-                # Add author filters if detected
-                if params.get("authors"):
-                    author_conditions = []
-                    for author in params["authors"][:2]:  # Limit authors
-                        author_conditions.append(
-                            text(f"EXISTS (SELECT 1 FROM unnest(authors) auth WHERE auth ILIKE '%{author}%')")
-                        )
-                    if author_conditions:
-                        query_obj = query_obj.where(or_(*author_conditions))
+                # 3. FAST RECENT PAPERS (fallback - no text search)
+                # Instead of slow text search, get recent papers from common categories
+                common_categories = ['cs.LG', 'cs.AI', 'cs.CV', 'cs.CL', 'math.AG', 'physics.gen-ph']
                 
-                # Add keyword search as fallback
-                if params.get("key_terms") and not params.get("categories"):
-                    # Use only top 3 keywords to avoid slow queries
-                    top_terms = params["key_terms"][:3]
-                    keyword_conditions = []
-                    for term in top_terms:
-                        keyword_conditions.append(
-                            or_(
-                                Arxiv.title.ilike(f'%{term}%'),
-                                Arxiv.abstract.ilike(f'%{term}%')
-                            )
-                        )
-                    if keyword_conditions:
-                        query_obj = query_obj.where(or_(*keyword_conditions))
-                
-                # Order by publication date (recent first) and limit
-                query_obj = query_obj.order_by(Arxiv.published_date.desc()).limit(25)  # Reduced from 50
+                query_obj = select(Arxiv).where(
+                    Arxiv.primary_category.in_(common_categories)
+                ).order_by(Arxiv.published_date.desc()).limit(25)
                 
                 results = db.execute(query_obj).scalars().all()
+                self.logger.info(f"Fast recent papers search returned {len(results)} papers")
                 
-                self.logger.info(f"Database query returned {len(results)} papers")
                 return results
                 
         except Exception as e:
-            self.logger.error(f"Error executing smart query: {str(e)}")
+            self.logger.error(f"Error in fast query: {str(e)}")
             return []
 
     async def _calculate_smart_similarity(self, query: str, papers: List[Any], params: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
-        Calculate similarity using optimized algorithm
+        FAST similarity calculation optimized for free tier
         """
         results = []
         query_lower = query.lower()
-        query_terms = set(params.get("key_terms", []))
+        key_terms = set(params.get("key_terms", []))
+        
+        # Pre-compile regex for speed
+        import re
+        word_pattern = re.compile(r'\b[a-zA-Z]+\b')
         
         for paper in papers:
             paper_dict = self._format_paper_dict(paper)
             
-            # FAST SIMILARITY CALCULATION
+            # ULTRA-FAST SIMILARITY (simplified algorithm)
             similarity = 0.0
             
-            # 1. Title matching (40% weight)
+            # 1. Simple title check (60% weight)
             title_lower = paper_dict["title"].lower()
-            title_words = set(re.findall(r'\b[a-zA-Z]+\b', title_lower))
             
-            # Exact phrase matching
+            # Quick substring check
             if query_lower in title_lower:
-                similarity += 0.25
+                similarity += 0.4
             
-            # Word overlap
-            word_overlap = len(query_terms.intersection(title_words))
-            if query_terms:
-                similarity += (word_overlap / len(query_terms)) * 0.15
+            # Fast word overlap check
+            if key_terms:
+                title_words = set(word_pattern.findall(title_lower))
+                overlap = len(key_terms.intersection(title_words))
+                similarity += (overlap / len(key_terms)) * 0.2
             
-            # 2. Abstract matching (30% weight)
-            abstract_lower = paper_dict["abstract"].lower()
-            abstract_words = set(re.findall(r'\b[a-zA-Z]+\b', abstract_lower))
-            
-            if query_lower in abstract_lower:
-                similarity += 0.15
-            
-            # Keyword density in abstract
-            if query_terms:
-                abstract_overlap = len(query_terms.intersection(abstract_words))
-                similarity += (abstract_overlap / len(query_terms)) * 0.15
-            
-            # 3. Category matching (20% weight)
+            # 2. Category bonus (30% weight)
             if params.get("categories"):
                 paper_categories = set(paper_dict.get("categories", []))
-                param_categories = set(params["categories"])
-                category_overlap = len(paper_categories.intersection(param_categories))
-                if param_categories:
-                    similarity += (category_overlap / len(param_categories)) * 0.20
+                if paper_categories.intersection(set(params["categories"])):
+                    similarity += 0.3
             
-            # 4. Author matching (10% weight)
-            if params.get("authors"):
-                paper_authors = " ".join(paper_dict.get("authors", [])).lower()
-                author_matches = sum(1 for author in params["authors"] if author.lower() in paper_authors)
-                if params["authors"]:
-                    similarity += (author_matches / len(params["authors"])) * 0.10
-            
-            # 5. Recency bonus (small boost for recent papers)
+            # 3. Recency bonus (10% weight)
             try:
                 pub_year = int(paper_dict.get("published_date", "2000")[:4])
-                current_year = datetime.now().year
-                if pub_year >= current_year - 2:
-                    similarity += 0.05
+                if pub_year >= 2022:  # Recent papers
+                    similarity += 0.1
             except:
                 pass
             
-            # Only include papers with meaningful similarity
-            if similarity > 0.1:  # Minimum threshold
+            # Only keep papers with reasonable similarity
+            if similarity > 0.05:  # Lower threshold for speed
                 paper_dict["similarity"] = similarity
                 results.append(paper_dict)
         
         return results
+
+    async def _get_recent_papers_fallback(self) -> List[Dict[str, Any]]:
+        """
+        Ultra-fast fallback: just get recent papers
+        """
+        try:
+            with get_db() as db:
+                # Simplest possible query
+                query_obj = select(Arxiv).order_by(Arxiv.published_date.desc()).limit(10)
+                results = db.execute(query_obj).scalars().all()
+                
+                papers = []
+                for paper in results:
+                    paper_dict = self._format_paper_dict(paper)
+                    paper_dict["similarity"] = 0.5  # Default similarity
+                    papers.append(paper_dict)
+                
+                return papers
+                
+        except Exception as e:
+            self.logger.error(f"Error in fallback: {str(e)}")
+            return []
 
     async def _apply_smart_filtering(self, papers: List[Dict[str, Any]], params: Dict[str, Any]) -> List[Dict[str, Any]]:
         """

@@ -1,11 +1,12 @@
-from sqlalchemy import create_engine, Column, Integer, String, Text, text, DateTime, JSON, Index, ForeignKey
+from sqlalchemy import create_engine, Column, Integer, String, Text, JSON, DateTime, Index, text
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, relationship
+from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from pgvector.sqlalchemy import Vector
 import os
 from contextlib import contextmanager
 from datetime import datetime
+from sqlalchemy.types import Float
 
 # Database connection parameters
 DB_CONFIG = {
@@ -39,25 +40,23 @@ Base = declarative_base()
 class Arxiv(Base):
     __tablename__ = "arxiv"
     
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True, index=True)
     arxiv_id = Column(String(50), unique=True, index=True)
-    title = Column(String(500), index=True)
+    title = Column(Text, index=True)  # Add index for title searches
     abstract = Column(Text)
     authors = Column(ARRAY(String))
-    categories = Column(ARRAY(String))
-    published_date = Column(DateTime, index=True)
-    updated_date = Column(DateTime)
-    doi = Column(String(100), index=True)
-    journal_ref = Column(String(500))
-    primary_category = Column(String(50), index=True)
-    comment = Column(Text)
-    embedding = Column(Vector(1536))  # OpenAI embeddings are 1536-dimensional
-    
+    categories = Column(ARRAY(String), index=True)  # Add index for category searches
+    published_date = Column(DateTime, index=True)  # Add index for date sorting
+    doi = Column(String(100))
+    primary_category = Column(String(50), index=True)  # Add index for primary category
+    embedding = Column(ARRAY(Float), nullable=True)
+
     # Add composite indexes for common query patterns
     __table_args__ = (
-        Index('idx_published_categories', published_date, categories),
-        Index('idx_published_authors', published_date, authors),
-        Index('idx_title_abstract', title, abstract),
+        Index('idx_published_date_desc', published_date.desc()),  # For recent papers
+        Index('idx_primary_category_date', primary_category, published_date.desc()),  # For category + date
+        Index('idx_title_search', text('title gin_trgm_ops'), postgresql_using='gin'),  # For title text search
+        Index('idx_categories_gin', categories, postgresql_using='gin'),  # For category array searches
     )
 
 # Define ChatSession model
