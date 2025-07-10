@@ -1,0 +1,35 @@
+# Core dependencies for optimized local embeddings
+torch>=2.0.0
+sentence-transformers>=2.2.0
+transformers>=4.21.0
+scikit-learn>=1.3.0
+numpy>=1.21.0
+tqdm>=4.64.0
+
+# Database connectivity (optimized)
+psycopg2-binary>=2.9.0
+
+# Environment and configuration
+python-dotenv>=1.0.0
+
+# System monitoring and performance
+psutil>=5.9.0
+
+# Optional GPU acceleration (uncomment if using CUDA)
+# torch-audio>=2.0.0
+# torchvision>=0.15.0
+
+# Additional ML utilities
+pandas>=1.5.0
+matplotlib>=3.6.0
+seaborn>=0.12.0
+
+# For handling large models efficiently
+accelerate>=0.20.0
+safetensors>=0.3.0
+
+# Threading and parallel processing (built-in, but for reference)
+# concurrent.futures (built-in)
+# threading (built-in)
+# queue (built-in)
+# gc (built-in) 

@@ -1,18 +1,16 @@
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from .base_agent import BaseAgent
 import openai
 from datetime import datetime
 from config.prompts import CHAT_AGENT_PROMPTS
-from database import get_db, Arxiv
-from sqlalchemy import text, func, desc
+from database import get_db, Arxiv, ChatSession
+from sqlalchemy import text, func, desc, or_, extract
 from sqlalchemy.sql import select
 import numpy as np
 import json
 import logging
-from sqlalchemy.sql import or_
 from sqlalchemy.sql import bindparam
 import uuid
-from database import ChatSession
 
 class ChatAgent(BaseAgent):
     def __init__(self):
@@ -169,60 +167,156 @@ class ChatAgent(BaseAgent):
             with get_db() as db:
                 # Get query embedding
                 query_embedding = await self._get_embedding(query)
-                embedding_str = str(query_embedding).replace("'", "")
+                
+                if not query_embedding:
+                    self.logger.warning("Failed to generate query embedding, falling back to keyword search")
+                    return await self._search_papers_by_keywords(query, intent, db)
+                
+                # Check if we have papers with embeddings
+                embedding_check = db.execute(
+                    text("SELECT COUNT(*) FROM arxiv WHERE embedding IS NOT NULL")
+                ).scalar()
+                
+                if embedding_check == 0:
+                    self.logger.warning("No papers with embeddings found, falling back to keyword search")
+                    return await self._search_papers_by_keywords(query, intent, db)
 
+                # Convert embedding to proper format for PostgreSQL
+                embedding_str = '[' + ','.join(map(str, query_embedding)) + ']'
+                
                 # Build the query with similarity calculation
                 similarity_expr = text(
-                    "cosine_similarity(arxiv.embedding::vector, ARRAY" + embedding_str + "::vector) as similarity"
+                    f"cosine_similarity(arxiv.embedding, '{embedding_str}'::vector) as similarity"
                 )
 
-                # Create the base query with filters
-                query = select(
+                # Create the base query with filters - only include papers with embeddings
+                base_query = select(
                     Arxiv,
                     similarity_expr
-                ).select_from(Arxiv)
+                ).select_from(Arxiv).where(Arxiv.embedding.is_not(None))
 
                 # Add filters based on search parameters
                 if intent.get("search_params", {}).get("year"):
                     year = intent["search_params"]["year"]
-                    query = query.where(
+                    base_query = base_query.where(
                         extract('year', Arxiv.published_date) == year
                     )
 
                 if intent.get("search_params", {}).get("category"):
                     category = intent["search_params"]["category"]
-                    query = query.where(
+                    base_query = base_query.where(
                         Arxiv.categories.contains([category])
                     )
 
                 # Add ordering and limit
-                query = query.order_by(text("similarity DESC")).limit(10)
+                base_query = base_query.order_by(text("similarity DESC")).limit(10)
 
                 # Execute query
                 self.logger.info("Executing paper search query...")
-                results = db.execute(query).all()
+                results = db.execute(base_query).all()
                 
                 # Convert results to dictionaries
                 papers = []
                 for paper, similarity in results:
-                    paper_dict = {
-                        "arxiv_id": paper.arxiv_id,
-                        "title": paper.title,
-                        "abstract": paper.abstract,
-                        "authors": paper.authors,
-                        "categories": paper.categories,
-                        "published_date": paper.published_date.isoformat() if paper.published_date else None,
-                        "doi": paper.doi,
-                        "primary_category": paper.primary_category,
-                        "similarity": float(similarity) if similarity is not None else 0.0
-                    }
-                    papers.append(paper_dict)
+                    # Only include papers with meaningful similarity (> 0.1)
+                    if similarity and similarity > 0.1:
+                        paper_dict = {
+                            "arxiv_id": paper.arxiv_id,
+                            "title": paper.title,
+                            "abstract": paper.abstract,
+                            "authors": paper.authors,
+                            "categories": paper.categories,
+                            "published_date": paper.published_date.isoformat() if paper.published_date else None,
+                            "doi": paper.doi,
+                            "primary_category": paper.primary_category,
+                            "similarity": float(similarity)
+                        }
+                        papers.append(paper_dict)
 
-                self.logger.info(f"Found {len(papers)} relevant papers")
+                self.logger.info(f"Found {len(papers)} relevant papers with similarity > 0.1")
+                
+                # If no papers found with good similarity, fall back to keyword search
+                if not papers:
+                    self.logger.info("No papers found with good similarity, falling back to keyword search")
+                    return await self._search_papers_by_keywords(query, intent, db)
+                
                 return papers
 
         except Exception as e:
             self.logger.error(f"Error searching papers: {str(e)}", exc_info=True)
+            # Fall back to keyword search on error
+            try:
+                with get_db() as db:
+                    return await self._search_papers_by_keywords(query, intent, db)
+            except:
+                return []
+
+    async def _search_papers_by_keywords(self, query: str, intent: Dict[str, Any], db) -> List[Dict[str, Any]]:
+        """
+        Fallback search using keyword matching when embeddings are not available
+        """
+        try:
+            self.logger.info("Performing keyword-based search...")
+            
+            # Extract keywords from query
+            keywords = query.lower().split()
+            
+            # Build keyword search query
+            keyword_query = select(Arxiv)
+            
+            # Add keyword conditions
+            keyword_conditions = []
+            for keyword in keywords:
+                keyword_conditions.append(
+                    or_(
+                        Arxiv.title.ilike(f"%{keyword}%"),
+                        Arxiv.abstract.ilike(f"%{keyword}%")
+                    )
+                )
+            
+            if keyword_conditions:
+                keyword_query = keyword_query.where(or_(*keyword_conditions))
+            
+            # Add filters based on search parameters
+            if intent.get("search_params", {}).get("year"):
+                year = intent["search_params"]["year"]
+                keyword_query = keyword_query.where(
+                    extract('year', Arxiv.published_date) == year
+                )
+
+            if intent.get("search_params", {}).get("category"):
+                category = intent["search_params"]["category"]
+                keyword_query = keyword_query.where(
+                    Arxiv.categories.contains([category])
+                )
+            
+            # Order by date and limit
+            keyword_query = keyword_query.order_by(Arxiv.published_date.desc()).limit(10)
+            
+            # Execute query
+            results = db.execute(keyword_query).scalars().all()
+            
+            # Convert results to dictionaries
+            papers = []
+            for paper in results:
+                paper_dict = {
+                    "arxiv_id": paper.arxiv_id,
+                    "title": paper.title,
+                    "abstract": paper.abstract,
+                    "authors": paper.authors,
+                    "categories": paper.categories,
+                    "published_date": paper.published_date.isoformat() if paper.published_date else None,
+                    "doi": paper.doi,
+                    "primary_category": paper.primary_category,
+                    "similarity": 0.0  # No similarity for keyword search
+                }
+                papers.append(paper_dict)
+
+            self.logger.info(f"Found {len(papers)} papers using keyword search")
+            return papers
+            
+        except Exception as e:
+            self.logger.error(f"Error in keyword search: {str(e)}", exc_info=True)
             return []
     
     async def _get_related_papers(self, papers: List[Arxiv], db) -> List[Arxiv]:
@@ -426,18 +520,36 @@ class ChatAgent(BaseAgent):
         
         return [topic for topic in common_topics if topic in text.lower()]
     
-    async def _get_embedding(self, text: str) -> List[float]:
+    async def _get_embedding(self, text: str) -> Optional[List[float]]:
         """
         Get embedding for text using OpenAI API
         """
         try:
+            if not text or not text.strip():
+                self.logger.warning("Empty or None text provided for embedding")
+                return None
+                
             self.logger.info(f"Generating embedding for text: {text[:100]}...")
+            
+            # Clean the text - remove extra whitespace and ensure it's not too long
+            cleaned_text = text.strip()
+            if len(cleaned_text) > 8000:  # OpenAI has token limits
+                cleaned_text = cleaned_text[:8000]
+                self.logger.warning(f"Text truncated to 8000 characters for embedding")
+            
             response = await openai.Embedding.acreate(
-                input=text,
+                input=cleaned_text,
                 model="text-embedding-ada-002"
             )
-            self.logger.info("Embedding generated successfully")
-            return response.data[0].embedding
+            
+            if response and response.data and len(response.data) > 0:
+                embedding = response.data[0].embedding
+                self.logger.info(f"Successfully generated embedding with {len(embedding)} dimensions")
+                return embedding
+            else:
+                self.logger.error("Invalid response from OpenAI embedding API")
+                return None
+                
         except Exception as e:
             self.logger.error(f"Error getting embedding: {str(e)}", exc_info=True)
             return None
