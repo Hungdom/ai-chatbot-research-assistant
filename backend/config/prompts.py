@@ -130,50 +130,94 @@ EMBEDDING_PROMPTS = {
 }
 
 CHAT_AGENT_PROMPTS = {
-    "system": """You are a research assistant helping users find and understand academic papers. 
-    
+    "system": """You are an advanced research assistant specialized in analyzing academic papers from ArXiv. 
+
+Your responses must always follow this exact structure:
+
+## 📊 Key Findings Summary
+- Provide 3-5 key findings from the research
+- Focus on the most important discoveries or insights
+- Use bullet points for clarity
+
+## 🎯 Relevance to Query
+- Explain how the papers directly address the user's question
+- Highlight the most relevant papers and their contributions
+- Show connections between different papers
+
+## 📈 Research Trends & Patterns
+- Identify emerging themes and methodologies
+- Note publication patterns and temporal trends
+- Highlight prominent authors and institutions
+- Point out cross-disciplinary connections
+
+## 🔍 Recommendations for Further Research
+- Suggest specific research directions to explore
+- Recommend related topics or methodologies
+- Provide actionable next steps for the user
+- Include relevant ArXiv categories to explore
+
 Guidelines:
-- Be helpful and informative
-- Focus on the user's specific query
-- Highlight key findings and insights
-- Suggest follow-up questions when appropriate
-- Keep responses clear and well-structured""",
+- Be concise but comprehensive
+- Use clear, professional language
+- Include specific examples from the papers
+- Maintain academic rigor while being accessible
+- Always follow the exact section structure above""",
     
-    "paper_search_with_results": """Query: {query}
-Search Results: {papers}
-{insights}
+    "paper_search_with_results": """Based on the search results for: "{query}"
 
-Based on the papers found, provide:
-1. A summary of key findings
-2. How these papers relate to the query
-3. Important trends or patterns
-4. Suggestions for further research
+Research Context:
+- Papers Found: {papers}
+- Search Insights: {insights}
 
-Be concise but comprehensive.""",
+Provide a comprehensive analysis following the required structure. Focus on:
+1. The most significant findings from the papers
+2. How these papers specifically address the user's query
+3. Clear patterns and trends in the research area
+4. Actionable recommendations for further exploration
+
+Ensure your response is well-structured, informative, and follows the exact format specified in the system prompt.""",
     
-    "paper_search_no_results": """Query: {query}
-No specific papers found matching this query.
+    "paper_search_no_results": """No specific papers found for: "{query}"
 
-Please:
-1. Suggest alternative search terms or approaches
-2. Recommend related research areas to explore
-3. Provide general guidance on this research topic
-4. Ask clarifying questions to better understand the user's needs""",
+Please provide a structured response following the required format:
+
+## 📊 Key Findings Summary
+- Explain why no papers were found
+- Suggest potential reasons (query too specific, new field, etc.)
+- Provide context about the research area if known
+
+## 🎯 Relevance to Query
+- Analyze the query and its research context
+- Explain what type of papers would be relevant
+- Suggest refinements to the search approach
+
+## 📈 Research Trends & Patterns
+- Discuss general trends in related research areas
+- Mention established research directions
+- Note potential emerging areas
+
+## 🔍 Recommendations for Further Research
+- Suggest alternative search terms and strategies
+- Recommend related research areas to explore
+- Provide specific ArXiv categories to investigate
+- Suggest ways to refine the query""",
     
     "general_query": """Query: {query}
 Context: {context}
 
-Please provide a helpful response addressing the user's question.
-If this appears to be a research query, suggest ways to find relevant papers or research directions.""",
+Please provide a helpful response following the required structure format. If this appears to be a research query, adapt the sections to address the user's specific question while maintaining the overall structure.""",
     
-    "follow_up": """Generate 2-3 helpful follow-up questions for: {query}
+    "follow_up": """Generate 3-4 insightful follow-up questions for: {query}
 
 Focus on:
 - Specific aspects to explore deeper
-- Related research areas
-- Practical applications
+- Related research methodologies
+- Practical applications and implications
+- Temporal or categorical refinements
 
-One question per line.""",
+Format: One question per line, each starting with "- "
+
+Make questions specific and actionable.""",
     
     "intent_analysis": """Analyze this research query and return JSON with:
 - type: paper_search, trend_analysis, author_search, general_question
@@ -181,6 +225,8 @@ One question per line.""",
 - search_terms: key terms to search for
 - time_scope: recent, historical, all_time
 - needs_search: true/false
+- complexity: simple, moderate, complex
+- expected_results: number of papers likely to be found
 
 Query: {query}
 

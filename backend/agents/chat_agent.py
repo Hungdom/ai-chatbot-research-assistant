@@ -884,194 +884,499 @@ class ChatAgent(BaseAgent):
     
     def _format_response_as_html(self, response_text: str, papers: List[Dict[str, Any]], intent: Dict[str, Any]) -> str:
         """
-        Format the response as HTML with proper styling and structure
+        Format the response as HTML with enhanced structure and styling
         """
-        html_parts = ['<div class="chat-response">']
+        html_parts = ['<div class="enhanced-research-response">']
         
-        # Add main response text with proper formatting
-        html_parts.append('<div class="response-text">')
-        # Convert markdown-style formatting to HTML
-        formatted_text = response_text.replace('**', '<strong>').replace('*', '<em>')
-        html_parts.append(f'<p>{formatted_text}</p>')
-        html_parts.append('</div>')
+        # Parse the structured response text
+        response_sections = self._parse_structured_response(response_text)
         
-        # Add papers if available
-        if papers:
-            html_parts.append('<div class="papers-section">')
-            html_parts.append('<h3 class="section-title">📚 Relevant Papers</h3>')
-            html_parts.append('<div class="papers-list">')
-            
-            for paper in papers:
-                html_parts.append('<div class="paper-card">')
-                # Paper title with link to arXiv
-                html_parts.append(f'<h4 class="paper-title"><a href="https://arxiv.org/abs/{paper["arxiv_id"]}" target="_blank">{paper["title"]}</a></h4>')
-                
-                # Authors with icons
-                html_parts.append('<div class="paper-authors">')
-                html_parts.append('<i class="fas fa-users"></i> ')
-                html_parts.append(f'<span>{", ".join(paper["authors"])}</span>')
-                html_parts.append('</div>')
-                
-                # Categories with tags
-                html_parts.append('<div class="paper-categories">')
-                for category in paper["categories"]:
-                    html_parts.append(f'<span class="category-tag">{category}</span>')
-                html_parts.append('</div>')
-                
-                # Abstract with expandable section
-                html_parts.append('<div class="paper-abstract">')
-                html_parts.append('<details>')
-                html_parts.append('<summary>Abstract</summary>')
-                html_parts.append(f'<p>{paper["abstract"]}</p>')
-                html_parts.append('</details>')
-                html_parts.append('</div>')
-                
-                # Metadata section
-                html_parts.append('<div class="paper-metadata">')
-                if paper.get("published_date"):
-                    html_parts.append(f'<span class="date"><i class="far fa-calendar"></i> {paper["published_date"]}</span>')
-                if paper.get("doi"):
-                    html_parts.append(f'<span class="doi"><i class="fas fa-link"></i> <a href="https://doi.org/{paper["doi"]}" target="_blank">DOI</a></span>')
-                html_parts.append('</div>')
-                
-                # Similarity score if available
-                if "similarity" in paper:
-                    similarity = float(paper["similarity"])
-                    html_parts.append(f'<div class="similarity-score">Relevance: {similarity:.2%}</div>')
-                
-                html_parts.append('</div>')  # Close paper-card
-            html_parts.append('</div>')  # Close papers-list
-            html_parts.append('</div>')  # Close papers-section
+        # Main response with structured sections
+        html_parts.append('<div class="response-content">')
         
-        # Add insights if available
-        if intent.get("insights"):
-            html_parts.append('<div class="insights-section">')
-            html_parts.append('<h3 class="section-title">📊 Research Insights</h3>')
-            
-            if intent["insights"].get("trends"):
-                html_parts.append('<div class="trends">')
-                html_parts.append('<h4><i class="fas fa-chart-line"></i> Research Trends</h4>')
-                for trend_type, trend_data in intent["insights"]["trends"].items():
-                    html_parts.append(f'<div class="trend-category"><h5>{trend_type.title()}</h5>')
-                    html_parts.append('<ul class="trend-list">')
-                    for item, count in trend_data.items():
-                        html_parts.append(f'<li><span class="trend-item">{item}</span> <span class="trend-count">({count})</span></li>')
-                    html_parts.append('</ul></div>')
+        # Key Findings Section
+        if response_sections.get("key_findings"):
+            html_parts.append('<div class="section key-findings-section">')
+            html_parts.append('<h3 class="section-header">📊 Key Findings Summary</h3>')
+            html_parts.append('<div class="findings-grid">')
+            for finding in response_sections["key_findings"]:
+                html_parts.append(f'<div class="finding-item">')
+                html_parts.append(f'<div class="finding-icon">🔍</div>')
+                html_parts.append(f'<div class="finding-text">{finding}</div>')
                 html_parts.append('</div>')
-            
-            if intent["insights"].get("gaps"):
-                html_parts.append('<div class="research-gaps">')
-                html_parts.append('<h4><i class="fas fa-lightbulb"></i> Research Gaps</h4>')
-                html_parts.append('<ul class="gaps-list">')
-                for gap in intent["insights"]["gaps"]:
-                    html_parts.append(f'<li>{gap}</li>')
-                html_parts.append('</ul>')
-                html_parts.append('</div>')
-            
-            html_parts.append('</div>')  # Close insights-section
-        
-        # Add follow-up questions if available
-        if intent.get("follow_up_questions"):
-            html_parts.append('<div class="follow-up-section">')
-            html_parts.append('<h3 class="section-title">💡 Suggested Follow-up Questions</h3>')
-            html_parts.append('<ul class="follow-up-list">')
-            for question in intent["follow_up_questions"]:
-                html_parts.append(f'<li><i class="fas fa-arrow-right"></i> {question}</li>')
-            html_parts.append('</ul>')
+            html_parts.append('</div>')
             html_parts.append('</div>')
         
-        # Add CSS styles
+        # Relevance to Query Section
+        if response_sections.get("relevance"):
+            html_parts.append('<div class="section relevance-section">')
+            html_parts.append('<h3 class="section-header">🎯 Relevance to Query</h3>')
+            html_parts.append('<div class="relevance-content">')
+            for relevance_point in response_sections["relevance"]:
+                html_parts.append(f'<div class="relevance-item">')
+                html_parts.append(f'<div class="relevance-icon">✓</div>')
+                html_parts.append(f'<div class="relevance-text">{relevance_point}</div>')
+                html_parts.append('</div>')
+            html_parts.append('</div>')
+            html_parts.append('</div>')
+        
+        # Research Trends Section
+        if response_sections.get("trends"):
+            html_parts.append('<div class="section trends-section">')
+            html_parts.append('<h3 class="section-header">📈 Research Trends & Patterns</h3>')
+            html_parts.append('<div class="trends-grid">')
+            for trend in response_sections["trends"]:
+                html_parts.append(f'<div class="trend-item">')
+                html_parts.append(f'<div class="trend-icon">📊</div>')
+                html_parts.append(f'<div class="trend-text">{trend}</div>')
+                html_parts.append('</div>')
+            html_parts.append('</div>')
+            html_parts.append('</div>')
+        
+        # Recommendations Section
+        if response_sections.get("recommendations"):
+            html_parts.append('<div class="section recommendations-section">')
+            html_parts.append('<h3 class="section-header">🔍 Recommendations for Further Research</h3>')
+            html_parts.append('<div class="recommendations-list">')
+            for rec in response_sections["recommendations"]:
+                html_parts.append(f'<div class="recommendation-item">')
+                html_parts.append(f'<div class="rec-icon">💡</div>')
+                html_parts.append(f'<div class="rec-text">{rec}</div>')
+                html_parts.append('</div>')
+            html_parts.append('</div>')
+            html_parts.append('</div>')
+        
+        # If no structured sections found, display as fallback
+        if not any(response_sections.values()):
+            html_parts.append('<div class="fallback-content">')
+            formatted_text = self._format_text_with_markdown(response_text)
+            html_parts.append(formatted_text)
+            html_parts.append('</div>')
+        
+        html_parts.append('</div>')  # Close response-content
+        
+        # Enhanced Papers Section
+        if papers:
+            html_parts.append('<div class="papers-showcase">')
+            html_parts.append('<h3 class="showcase-header">📚 Referenced Papers</h3>')
+            html_parts.append('<div class="papers-grid">')
+            
+            for i, paper in enumerate(papers[:6]):  # Show top 6 papers
+                html_parts.append('<div class="paper-card-enhanced">')
+                
+                # Paper header
+                html_parts.append('<div class="paper-header">')
+                html_parts.append(f'<div class="paper-rank">#{i+1}</div>')
+                html_parts.append(f'<div class="paper-relevance">')
+                if paper.get("similarity"):
+                    similarity = float(paper["similarity"])
+                    html_parts.append(f'<div class="relevance-badge">{similarity:.1%}</div>')
+                html_parts.append('</div>')
+                html_parts.append('</div>')
+                
+                # Paper title
+                html_parts.append(f'<h4 class="paper-title-enhanced">')
+                html_parts.append(f'<a href="https://arxiv.org/abs/{paper["arxiv_id"]}" target="_blank">{paper["title"]}</a>')
+                html_parts.append('</h4>')
+                
+                # Authors (first 3 + et al)
+                authors = paper.get("authors", [])
+                if authors:
+                    author_text = ", ".join(authors[:3])
+                    if len(authors) > 3:
+                        author_text += " et al."
+                    html_parts.append(f'<div class="paper-authors-enhanced">')
+                    html_parts.append(f'<span class="author-icon">👥</span>')
+                    html_parts.append(f'<span class="author-text">{author_text}</span>')
+                    html_parts.append('</div>')
+                
+                # Categories
+                categories = paper.get("categories", [])
+                if categories:
+                    html_parts.append('<div class="paper-categories-enhanced">')
+                    for category in categories[:3]:
+                        category_class = self._get_category_class(category)
+                        html_parts.append(f'<span class="category-badge {category_class}">{category}</span>')
+                    html_parts.append('</div>')
+                
+                # Date
+                if paper.get("published_date"):
+                    pub_date = paper["published_date"][:10]  # YYYY-MM-DD format
+                    html_parts.append(f'<div class="paper-date">')
+                    html_parts.append(f'<span class="date-icon">📅</span>')
+                    html_parts.append(f'<span class="date-text">{pub_date}</span>')
+                    html_parts.append('</div>')
+                
+                # Abstract preview
+                abstract = paper.get("abstract", "")
+                if abstract:
+                    preview = abstract[:150] + "..." if len(abstract) > 150 else abstract
+                    html_parts.append('<div class="abstract-preview-enhanced">')
+                    html_parts.append(f'<p>{preview}</p>')
+                    html_parts.append('</div>')
+                
+                # Action buttons
+                html_parts.append('<div class="paper-actions">')
+                html_parts.append(f'<a href="https://arxiv.org/abs/{paper["arxiv_id"]}" target="_blank" class="action-btn primary">View Paper</a>')
+                if paper.get("doi"):
+                    html_parts.append(f'<a href="https://doi.org/{paper["doi"]}" target="_blank" class="action-btn secondary">DOI</a>')
+                html_parts.append('</div>')
+                
+                html_parts.append('</div>')  # Close paper-card-enhanced
+            
+            html_parts.append('</div>')  # Close papers-grid
+            html_parts.append('</div>')  # Close papers-showcase
+        
+        # Enhanced CSS
         html_parts.append('''
         <style>
-            .chat-response {
+            .enhanced-research-response {
                 font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
                 line-height: 1.6;
-                color: #333;
-            }
-            .section-title {
                 color: #2c3e50;
-                border-bottom: 2px solid #eee;
-                padding-bottom: 0.5em;
-                margin-top: 1.5em;
+                max-width: 1200px;
+                margin: 0 auto;
             }
-            .paper-card {
-                background: #fff;
-                border: 1px solid #e1e4e8;
-                border-radius: 6px;
-                padding: 1.5em;
-                margin: 1em 0;
-                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            
+            .response-content {
+                margin-bottom: 2rem;
             }
-            .paper-title {
-                margin: 0 0 0.5em;
-                font-size: 1.2em;
+            
+            .section {
+                margin-bottom: 2rem;
+                background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+                border-radius: 12px;
+                padding: 1.5rem;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+                border-left: 4px solid #3498db;
             }
-            .paper-title a {
-                color: #0366d6;
+            
+            .section-header {
+                color: #2c3e50;
+                font-size: 1.4em;
+                margin-bottom: 1rem;
+                font-weight: 600;
+                display: flex;
+                align-items: center;
+                gap: 0.5rem;
+            }
+            
+            .findings-grid, .trends-grid {
+                display: grid;
+                gap: 1rem;
+            }
+            
+            .finding-item, .trend-item, .relevance-item, .recommendation-item {
+                display: flex;
+                align-items: flex-start;
+                gap: 1rem;
+                padding: 1rem;
+                background: rgba(255,255,255,0.8);
+                border-radius: 8px;
+                border: 1px solid #e9ecef;
+                transition: transform 0.2s ease, box-shadow 0.2s ease;
+            }
+            
+            .finding-item:hover, .trend-item:hover, .relevance-item:hover, .recommendation-item:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            }
+            
+            .finding-icon, .trend-icon, .relevance-icon, .rec-icon {
+                font-size: 1.5em;
+                min-width: 40px;
+                text-align: center;
+            }
+            
+            .finding-text, .trend-text, .relevance-text, .rec-text {
+                flex: 1;
+                font-size: 1.05em;
+                line-height: 1.6;
+            }
+            
+            .key-findings-section {
+                border-left-color: #e74c3c;
+            }
+            
+            .relevance-section {
+                border-left-color: #f39c12;
+            }
+            
+            .trends-section {
+                border-left-color: #27ae60;
+            }
+            
+            .recommendations-section {
+                border-left-color: #9b59b6;
+            }
+            
+            .papers-showcase {
+                margin-top: 2rem;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                padding: 2rem;
+                border-radius: 12px;
+                color: white;
+            }
+            
+            .showcase-header {
+                font-size: 1.6em;
+                margin-bottom: 1.5rem;
+                text-align: center;
+                font-weight: 600;
+            }
+            
+            .papers-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+                gap: 1.5rem;
+            }
+            
+            .paper-card-enhanced {
+                background: white;
+                color: #2c3e50;
+                border-radius: 12px;
+                padding: 1.5rem;
+                box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+                transition: transform 0.3s ease, box-shadow 0.3s ease;
+            }
+            
+            .paper-card-enhanced:hover {
+                transform: translateY(-5px);
+                box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+            }
+            
+            .paper-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 1rem;
+            }
+            
+            .paper-rank {
+                background: #3498db;
+                color: white;
+                padding: 0.5rem 1rem;
+                border-radius: 20px;
+                font-weight: bold;
+                font-size: 0.9em;
+            }
+            
+            .relevance-badge {
+                background: #27ae60;
+                color: white;
+                padding: 0.3rem 0.8rem;
+                border-radius: 15px;
+                font-size: 0.85em;
+                font-weight: 600;
+            }
+            
+            .paper-title-enhanced {
+                margin-bottom: 1rem;
+                font-size: 1.1em;
+                line-height: 1.4;
+            }
+            
+            .paper-title-enhanced a {
+                color: #2c3e50;
                 text-decoration: none;
+                font-weight: 600;
             }
-            .paper-title a:hover {
+            
+            .paper-title-enhanced a:hover {
+                color: #3498db;
                 text-decoration: underline;
             }
-            .paper-authors {
-                color: #586069;
-                margin-bottom: 0.5em;
+            
+            .paper-authors-enhanced, .paper-date {
+                display: flex;
+                align-items: center;
+                gap: 0.5rem;
+                margin-bottom: 0.8rem;
+                color: #7f8c8d;
+                font-size: 0.95em;
             }
-            .category-tag {
+            
+            .paper-categories-enhanced {
+                margin-bottom: 1rem;
+            }
+            
+            .category-badge {
                 display: inline-block;
-                background: #e1ecf4;
-                color: #39739d;
-                padding: 0.2em 0.6em;
-                border-radius: 3px;
-                margin: 0.2em;
+                padding: 0.3rem 0.8rem;
+                border-radius: 15px;
+                font-size: 0.8em;
+                font-weight: 500;
+                margin-right: 0.5rem;
+                margin-bottom: 0.5rem;
+            }
+            
+            .category-badge.cs { background: #e3f2fd; color: #1565c0; }
+            .category-badge.math { background: #f3e5f5; color: #7b1fa2; }
+            .category-badge.physics { background: #e8f5e8; color: #388e3c; }
+            .category-badge.astro { background: #fff3e0; color: #f57c00; }
+            .category-badge.default { background: #f5f5f5; color: #616161; }
+            
+            .abstract-preview-enhanced {
+                background: #f8f9fa;
+                padding: 1rem;
+                border-radius: 8px;
+                margin-bottom: 1rem;
+                border-left: 3px solid #3498db;
+            }
+            
+            .abstract-preview-enhanced p {
+                margin: 0;
+                color: #555;
+                font-size: 0.95em;
+                line-height: 1.5;
+            }
+            
+            .paper-actions {
+                display: flex;
+                gap: 0.5rem;
+                margin-top: 1rem;
+            }
+            
+            .action-btn {
+                padding: 0.5rem 1rem;
+                border-radius: 6px;
+                text-decoration: none;
                 font-size: 0.9em;
+                font-weight: 500;
+                text-align: center;
+                transition: all 0.2s ease;
             }
-            .paper-abstract {
-                margin: 1em 0;
+            
+            .action-btn.primary {
+                background: #3498db;
+                color: white;
             }
-            .paper-metadata {
-                color: #586069;
-                font-size: 0.9em;
-                margin-top: 1em;
+            
+            .action-btn.primary:hover {
+                background: #2980b9;
             }
-            .paper-metadata span {
-                margin-right: 1em;
+            
+            .action-btn.secondary {
+                background: #ecf0f1;
+                color: #2c3e50;
             }
-            .similarity-score {
-                background: #f1f8ff;
-                color: #0366d6;
-                padding: 0.3em 0.6em;
-                border-radius: 3px;
-                display: inline-block;
-                margin-top: 0.5em;
+            
+            .action-btn.secondary:hover {
+                background: #d5dbdb;
             }
-            .trend-list, .gaps-list, .follow-up-list {
-                list-style: none;
-                padding-left: 0;
+            
+            .fallback-content {
+                background: #f8f9fa;
+                padding: 1.5rem;
+                border-radius: 8px;
+                border-left: 4px solid #6c757d;
             }
-            .trend-item {
-                color: #0366d6;
-            }
-            .trend-count {
-                color: #586069;
-                font-size: 0.9em;
-            }
-            .follow-up-list li {
-                margin: 0.5em 0;
-                padding-left: 1.5em;
-                position: relative;
-            }
-            .follow-up-list li i {
-                position: absolute;
-                left: 0;
-                color: #0366d6;
+            
+            @media (max-width: 768px) {
+                .papers-grid {
+                    grid-template-columns: 1fr;
+                }
+                
+                .paper-actions {
+                    flex-direction: column;
+                }
             }
         </style>
         ''')
         
-        html_parts.append('</div>')  # Close chat-response
+        html_parts.append('</div>')  # Close enhanced-research-response
         
         return '\n'.join(html_parts)
+    
+    def _parse_structured_response(self, response_text: str) -> Dict[str, List[str]]:
+        """
+        Parse the structured response text into sections
+        """
+        sections = {
+            "key_findings": [],
+            "relevance": [],
+            "trends": [],
+            "recommendations": []
+        }
+        
+        current_section = None
+        lines = response_text.split('\n')
+        
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+                
+            # Check for section headers
+            if '📊 Key Findings' in line or 'Key Findings' in line:
+                current_section = "key_findings"
+                continue
+            elif '🎯 Relevance' in line or 'Relevance to Query' in line:
+                current_section = "relevance"
+                continue
+            elif '📈 Research Trends' in line or 'Trends' in line:
+                current_section = "trends"
+                continue
+            elif '🔍 Recommendations' in line or 'Recommendations' in line:
+                current_section = "recommendations"
+                continue
+            
+            # Add content to current section
+            if current_section and line.startswith('-'):
+                content = line[1:].strip()  # Remove the dash
+                if content:
+                    sections[current_section].append(content)
+        
+        return sections
+    
+    def _format_text_with_markdown(self, text: str) -> str:
+        """
+        Convert basic markdown to HTML
+        """
+        # Convert headers
+        text = text.replace('## ', '<h2>').replace('\n', '</h2>\n')
+        text = text.replace('### ', '<h3>').replace('\n', '</h3>\n')
+        
+        # Convert bold and italic
+        text = text.replace('**', '<strong>').replace('**', '</strong>')
+        text = text.replace('*', '<em>').replace('*', '</em>')
+        
+        # Convert lists
+        lines = text.split('\n')
+        formatted_lines = []
+        in_list = False
+        
+        for line in lines:
+            if line.strip().startswith('-'):
+                if not in_list:
+                    formatted_lines.append('<ul>')
+                    in_list = True
+                formatted_lines.append(f'<li>{line.strip()[1:].strip()}</li>')
+            else:
+                if in_list:
+                    formatted_lines.append('</ul>')
+                    in_list = False
+                formatted_lines.append(f'<p>{line}</p>')
+        
+        if in_list:
+            formatted_lines.append('</ul>')
+        
+        return '\n'.join(formatted_lines)
+    
+    def _get_category_class(self, category: str) -> str:
+        """
+        Get CSS class for category styling
+        """
+        if category.startswith('cs'):
+            return 'cs'
+        elif category.startswith('math'):
+            return 'math'
+        elif category.startswith('physics') or category.startswith('gr-qc') or category.startswith('hep'):
+            return 'physics'
+        elif category.startswith('astro'):
+            return 'astro'
+        else:
+            return 'default'
     
     async def _generate_follow_up_questions(self, query: str, intent: Dict[str, Any]) -> List[str]:
         """
