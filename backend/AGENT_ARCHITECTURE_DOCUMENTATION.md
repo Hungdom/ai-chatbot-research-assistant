@@ -4,6 +4,8 @@
 
 The Research Assistant backend is built around a sophisticated multi-agent architecture designed to process user queries, search academic papers, and generate intelligent responses. The system leverages ArXiv papers stored in a PostgreSQL database with vector embeddings for semantic search.
 
+> 📚 **Want a simpler explanation?** Check out [SIMPLE_CHAT_WORKFLOW.md](./SIMPLE_CHAT_WORKFLOW.md) for an easy-to-understand overview of how the system works.
+
 ### Key Technologies
 - **Framework**: FastAPI (Python)
 - **Database**: PostgreSQL with pgvector extension
