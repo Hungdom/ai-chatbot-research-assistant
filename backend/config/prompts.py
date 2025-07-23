@@ -44,7 +44,14 @@ QUERY_AGENT_PROMPTS = {
 # Response Agent Prompts
 RESPONSE_AGENT_PROMPTS = {
     "system": """You are a research analyst that provides insightful analysis of academic papers from ArXiv.
-    You help users understand trends, patterns, and key findings in the research landscape.""",
+    You help users understand trends, patterns, and key findings in the research landscape.
+    
+    FORMATTING REQUIREMENTS:
+    - Use clear markdown formatting with headers (##, ###)
+    - Structure responses with numbered or bulleted lists
+    - Include paper titles in **bold**
+    - Use proper line breaks and spacing
+    - Organize information in logical sections""",
     
     "analysis": """Analyze the following ArXiv papers and provide insights:
     
@@ -54,60 +61,152 @@ RESPONSE_AGENT_PROMPTS = {
     Top Categories: {top_categories}
     Trending Years: {trending_years}
     
-    Focus on:
-    1. Key trends and patterns
-    2. Notable findings or breakthroughs
-    3. Gaps in the research
-    4. Future research directions
+    Structure your response as follows:
+
+    ## Research Overview
+    [Brief overview of the research landscape]
+
+    ## Key Findings
+    1. **Main Trends**: [Describe 2-3 major trends]
+    2. **Notable Research**: [Highlight important findings]
+    3. **Research Gaps**: [Identify areas needing more work]
+
+    ## Research Categories
+    [Analysis of the main research categories and their distribution]
+
+    ## Future Directions
+    [Suggestions for future research based on current trends]
+
+    ---
+    **Next Steps**: [Actionable suggestions for the user]""",
     
-    Provide a comprehensive analysis that helps users understand the research landscape.""",
+    "no_results": """No ArXiv papers were found for the query: **{query}**
     
-    "no_results": """No ArXiv papers were found for the query: {query}
+    ## Suggestions to Improve Your Search
+
+    ### 1. **Refine Your Search Terms**
+    - Try broader or alternative keywords
+    - Use synonyms or related technical terms
+    - Consider different spellings or variations
+
+    ### 2. **Alternative Search Strategies**
+    - Search in specific ArXiv categories (cs, math, physics, etc.)
+    - Try time-based searches (recent papers, specific years)
+    - Use partial matches or substring searches
+
+    ### 3. **Related Topics to Explore**
+    - [Suggest 3-4 related research areas]
+    - [Recommend specific ArXiv categories to browse]
+
+    ### 4. **Specific Recommendations**
+    - [Provide actionable, specific search suggestions]
+
+    ---
+    **Need Help?** Feel free to rephrase your query or ask for guidance on specific research areas.""",
     
-    Provide helpful suggestions for:
-    1. Refining the search query
-    2. Alternative search strategies
-    3. Related topics to explore
-    4. Specific ArXiv categories to try
+    "trending_topics": """# Trending Topics Analysis
+
+    ## Current Research Landscape
+    Based on the analysis of {total_arxiv} papers, here are the key trends:
+
+    ### 🔥 **Hot Topics**
+    1. **[Topic 1]**: [Description and why it's trending]
+    2. **[Topic 2]**: [Description and impact]
+    3. **[Topic 3]**: [Description and applications]
+
+    ### 📊 **Popular Methodologies**
+    - **[Method 1]**: [Usage and applications]
+    - **[Method 2]**: [Advantages and adoption]
+    - **[Method 3]**: [Innovation and impact]
+
+    ### 🌐 **Cross-Disciplinary Connections**
+    - [Describe interdisciplinary collaborations]
+    - [Highlight emerging hybrid fields]
+
+    ### 📈 **Growth Areas**
+    - [Identify rapidly growing research areas]
+    - [Explain why they're gaining momentum]
+
+    ---
+    **Takeaway**: [Summary of what these trends mean for the field]""",
     
-    Be specific and actionable in your suggestions.""",
+    "yearly_summary": """# Research Summary for {year}
+
+    ## Executive Summary
+    [Brief overview of the year's research developments]
+
+    ## Major Research Themes
+    ### 1. **[Theme 1]**
+    - **Key Papers**: [List 2-3 important papers]
+    - **Impact**: [Describe significance]
+
+    ### 2. **[Theme 2]**  
+    - **Key Papers**: [List 2-3 important papers]
+    - **Impact**: [Describe significance]
+
+    ### 3. **[Theme 3]**
+    - **Key Papers**: [List 2-3 important papers]
+    - **Impact**: [Describe significance]
+
+    ## Notable Contributions
+    ### 🏆 **Breakthrough Research**
+    - [Highlight most significant findings]
+
+    ### 👥 **Leading Researchers**
+    - [Mention notable authors and their contributions]
+
+    ### 🏢 **Active Institutions**
+    - [Identify key research institutions]
+
+    ## Research Impact
+    - **Citations and Influence**: [Discuss impact metrics]
+    - **Practical Applications**: [Real-world applications]
+    - **Future Implications**: [Long-term significance]
+
+    ---
+    **{year} in Perspective**: [Overall assessment of the year's contributions]""",
     
-    "trending_topics": """Analyze the following ArXiv papers to identify trending topics:
-    
-    Papers: {arxiv}
-    
-    Focus on:
-    1. Emerging research areas
-    2. Popular methodologies
-    3. Common applications
-    4. Cross-disciplinary connections
-    
-    Provide insights about current trends in the field.""",
-    
-    "yearly_summary": """Provide a summary of ArXiv papers from {year}:
-    
-    Papers: {arxiv}
-    
-    Include:
-    1. Major themes and topics
-    2. Key findings and breakthroughs
-    3. Notable authors and institutions
-    4. Impact and significance
-    
-    Create a comprehensive overview of research developments in {year}.""",
-    
-    "category_analysis": """Analyze ArXiv papers by category:
-    
-    Papers: {arxiv}
-    Categories: {categories}
-    
-    Focus on:
-    1. Distribution across categories
-    2. Interdisciplinary connections
-    3. Category-specific trends
-    4. Emerging subcategories
-    
-    Provide insights about the research landscape across different categories."""
+    "category_analysis": """# Research Category Analysis
+
+    ## Category Distribution Overview
+    Analysis of {total_arxiv} papers across research categories:
+
+    ### 📊 **Category Breakdown**
+    {categories}
+
+    ## Deep Dive by Category
+
+    ### 🔬 **[Top Category 1]**
+    - **Paper Count**: [Number and percentage]
+    - **Key Research Areas**: [Main topics]
+    - **Notable Trends**: [Emerging patterns]
+
+    ### 💻 **[Top Category 2]**  
+    - **Paper Count**: [Number and percentage]
+    - **Key Research Areas**: [Main topics]
+    - **Notable Trends**: [Emerging patterns]
+
+    ### 📐 **[Top Category 3]**
+    - **Paper Count**: [Number and percentage]  
+    - **Key Research Areas**: [Main topics]
+    - **Notable Trends**: [Emerging patterns]
+
+    ## Cross-Category Insights
+    ### 🔗 **Interdisciplinary Connections**
+    - [Describe how categories intersect]
+    - [Highlight collaborative research areas]
+
+    ### 📈 **Emerging Subcategories** 
+    - [Identify new or growing subcategories]
+    - [Explain their significance]
+
+    ## Research Landscape
+    - **Dominant Areas**: [Most active research areas]
+    - **Growth Sectors**: [Rapidly expanding categories]  
+    - **Future Opportunities**: [Potential new categories]
+
+    ---
+    **Key Insight**: [Main takeaway about the research distribution]"""
 }
 
 # Embedding-related Prompts
@@ -132,48 +231,103 @@ EMBEDDING_PROMPTS = {
 CHAT_AGENT_PROMPTS = {
     "system": """You are a research assistant helping users find and understand academic papers. 
     
-Guidelines:
-- Be helpful and informative
-- Focus on the user's specific query
-- Highlight key findings and insights
-- Suggest follow-up questions when appropriate
-- Keep responses clear and well-structured""",
+    RESPONSE FORMAT REQUIREMENTS:
+    - Use clear markdown formatting with headers (##, ###)
+    - Structure responses with numbered or bulleted lists
+    - Include paper titles in **bold** and authors in *italics*
+    - Use proper line breaks and spacing for readability
+    - Organize information in logical sections
+    - End responses with actionable next steps
     
-    "paper_search_with_results": """Query: {query}
-Search Results: {papers}
-{insights}
-
-Based on the papers found, provide:
-1. A summary of key findings
-2. How these papers relate to the query
-3. Important trends or patterns
-4. Suggestions for further research
-
-Be concise but comprehensive.""",
+    Guidelines:
+    - Be helpful and informative
+    - Focus on the user's specific query
+    - Highlight key findings and insights
+    - Suggest follow-up questions when appropriate
+    - Keep responses clear and well-structured""",
     
-    "paper_search_no_results": """Query: {query}
-No specific papers found matching this query.
+    "paper_search_with_results": """Based on your query about "{query}", I found relevant research papers. Here's my analysis:
 
-Please:
-1. Suggest alternative search terms or approaches
-2. Recommend related research areas to explore
-3. Provide general guidance on this research topic
-4. Ask clarifying questions to better understand the user's needs""",
+## 📚 **Research Summary**
+[Provide a brief overview of what the papers collectively address]
+
+## 🔍 **Key Findings**
+1. **Main Research Areas**: [Identify 2-3 primary research directions]
+2. **Notable Papers**: 
+   - **[Paper Title 1]** by *[Authors]*: [Brief description]
+   - **[Paper Title 2]** by *[Authors]*: [Brief description]
+   - **[Paper Title 3]** by *[Authors]*: [Brief description]
+3. **Important Trends**: [Describe patterns you observe]
+
+## 💡 **Insights & Patterns**
+- **Research Focus**: [What are researchers primarily investigating?]
+- **Methodological Approaches**: [Common methods or techniques used]
+- **Applications**: [Practical applications or use cases]
+- **Research Gaps**: [Areas that need more investigation]
+
+## 🎯 **Recommendations for Further Research**
+1. [Specific research direction 1]
+2. [Specific research direction 2]
+3. [Specific research direction 3]
+
+---
+**Next Steps**: Would you like me to dive deeper into any specific aspect of these findings, or explore a particular research direction?""",
     
-    "general_query": """Query: {query}
-Context: {context}
+    "paper_search_no_results": """I couldn't find specific papers for your query: **"{query}"**
 
-Please provide a helpful response addressing the user's question.
-If this appears to be a research query, suggest ways to find relevant papers or research directions.""",
+## 🔍 **Let's Improve Your Search**
+
+### **1. Refine Your Search Terms**
+- Try broader or alternative keywords
+- Use synonyms or related technical terms  
+- Consider different spellings or variations
+
+### **2. Alternative Search Strategies**
+- **Category-based search**: Try searching within specific arXiv categories (cs, math, physics, etc.)
+- **Time-based search**: Focus on recent papers or specific years
+- **Author search**: Look for papers by specific researchers in this field
+
+### **3. Related Research Areas to Explore**
+- [Suggest 3-4 related research areas]
+- [Recommend specific arXiv categories to browse]
+
+### **4. Specific Recommendations**
+- [Provide actionable, specific search suggestions based on the query]
+
+---
+**Need Help?** Feel free to rephrase your query, or ask me about specific research areas you'd like to explore. I can also help you identify the right keywords or research categories for your topic.""",
     
-    "follow_up": """Generate 2-3 helpful follow-up questions for: {query}
+    "general_query": """I'd be happy to help with your question about "{query}".
 
-Focus on:
-- Specific aspects to explore deeper
-- Related research areas
-- Practical applications
+## 📋 **Understanding Your Request**
+[Analyze what the user is asking for]
 
-One question per line.""",
+## 💡 **My Response**
+[Provide helpful information addressing their question]
+
+## 🔍 **Research Connections**
+If you're interested in exploring this topic through academic research, I can help you:
+- Find relevant papers and studies
+- Identify key researchers in this field
+- Explore related research areas
+- Suggest specific search terms
+
+---
+**How can I help further?** Would you like me to search for academic papers on this topic, or do you have a more specific research question?""",
+    
+    "follow_up": """Based on your query about "{query}", here are some follow-up questions that could help deepen your research:
+
+## 🤔 **Deeper Exploration**
+1. **[Specific aspect question]** - [Why this would be valuable to explore]
+
+## 🔗 **Related Areas**  
+2. **[Related research area question]** - [Connection to your original query]
+
+## 🎯 **Practical Applications**
+3. **[Application-focused question]** - [Real-world relevance]
+
+---
+**Which direction interests you most?** I can help you find papers and research for any of these areas.""",
     
     "intent_analysis": """Analyze this research query and return JSON with:
 - type: paper_search, trend_analysis, author_search, general_question

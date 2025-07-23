@@ -1,3 +1,135 @@
 @tailwind base;
 @tailwind components;
-@tailwind utilities; 
+@tailwind utilities;
+
+/* Custom styles for research assistant responses */
+.prose h2 {
+  @apply flex items-center gap-2;
+}
+
+.prose h3 {
+  @apply flex items-center gap-2;
+}
+
+/* Enhanced spacing for structured research responses */
+.prose h2 {
+  @apply mt-8 mb-4 first:mt-0;
+}
+
+.prose h3 {
+  @apply mt-6 mb-3;
+}
+
+/* Better styling for research sections */
+.prose hr {
+  @apply my-8 border-t-2;
+}
+
+/* Special styling for follow-up questions and next steps */
+.prose p:has(strong:contains("Next Steps")) {
+  @apply bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 mt-6;
+}
+
+/* Enhanced list styling */
+.prose ul li {
+  @apply my-1;
+}
+
+.prose ol li {
+  @apply my-1;
+}
+
+/* Enhanced HTML response styling */
+.research-assistant-response,
+.enhanced-research-response {
+  /* Ensure proper rendering in chat bubbles */
+  max-width: none !important;
+  width: 100%;
+}
+
+/* Ensure HTML responses work with dark mode */
+.dark .research-assistant-response,
+.dark .enhanced-research-response {
+  color: #e2e8f0 !important;
+}
+
+.dark .research-assistant-response .section-title,
+.dark .enhanced-research-response .enhanced-section-title {
+  color: #f7fafc !important;
+  border-bottom-color: #4a5568 !important;
+}
+
+.dark .research-assistant-response .papers-showcase,
+.dark .enhanced-research-response .enhanced-papers-showcase {
+  background: linear-gradient(135deg, #1a202c 0%, #2d3748 100%) !important;
+  border-color: #4a5568 !important;
+}
+
+.dark .research-assistant-response .paper-card-enhanced,
+.dark .enhanced-research-response .premium-paper-card {
+  background: #2d3748 !important;
+  border-color: #4a5568 !important;
+  color: #e2e8f0 !important;
+}
+
+.dark .research-assistant-response .paper-title a,
+.dark .enhanced-research-response .premium-paper-title a {
+  color: #e2e8f0 !important;
+}
+
+.dark .research-assistant-response .paper-title a:hover,
+.dark .enhanced-research-response .premium-paper-title a:hover {
+  color: #63b3ed !important;
+}
+
+/* Responsive adjustments for mobile */
+@media (max-width: 768px) {
+  .research-assistant-response .papers-showcase,
+  .enhanced-research-response .enhanced-papers-showcase {
+    padding: 1rem;
+    border-radius: 12px;
+  }
+  
+  .research-assistant-response .paper-card-enhanced,
+  .enhanced-research-response .premium-paper-card {
+    padding: 1rem;
+    margin: 0.75rem 0;
+  }
+  
+  .research-assistant-response .section-header,
+  .enhanced-research-response .enhanced-section-header {
+    margin: 1rem 0 0.75rem 0;
+  }
+  
+  .enhanced-research-response .insight-metrics {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+}
+
+/* Fix for emoji rendering consistency */
+.section-emoji,
+.subsection-emoji,
+.enhanced-section-emoji,
+.enhanced-subsection-emoji {
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+}
+
+/* Ensure proper text selection */
+.research-assistant-response *,
+.enhanced-research-response * {
+  user-select: text;
+}
+
+/* Improve link hover states */
+.research-assistant-response a:hover,
+.enhanced-research-response a:hover {
+  transition: color 0.2s ease;
+}
+
+/* Ensure proper scroll behavior for long responses */
+.research-assistant-response,
+.enhanced-research-response {
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+} 

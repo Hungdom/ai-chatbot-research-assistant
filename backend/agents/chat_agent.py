@@ -760,192 +760,358 @@ class ChatAgent(BaseAgent):
     
     def _format_response_as_html(self, response_text: str, papers: List[Dict[str, Any]], intent: Dict[str, Any]) -> str:
         """
-        Format the response as HTML with proper styling and structure
+        Format the response as HTML with enhanced styling for structured responses
         """
-        html_parts = ['<div class="chat-response">']
+        import re
         
-        # Add main response text with proper formatting
-        html_parts.append('<div class="response-text">')
-        # Convert markdown-style formatting to HTML
-        formatted_text = response_text.replace('**', '<strong>').replace('*', '<em>')
-        html_parts.append(f'<p>{formatted_text}</p>')
-        html_parts.append('</div>')
+        html_parts = ['<div class="research-assistant-response">']
         
-        # Add papers if available
-        if papers:
-            html_parts.append('<div class="papers-section">')
-            html_parts.append('<h3 class="section-title">📚 Relevant Papers</h3>')
-            html_parts.append('<div class="papers-list">')
+        # Convert structured markdown to HTML
+        lines = response_text.split('\n')
+        current_section = []
+        in_list = False
+        list_type = None
+        
+        for line in lines:
+            line = line.strip()
+            if not line:
+                if current_section:
+                    html_parts.append('<br/>')
+                continue
+                
+            # Headers
+            if line.startswith('## '):
+                if in_list:
+                    html_parts.append(f'</{list_type}>')
+                    in_list = False
+                header_text = line[3:].strip()
+                # Extract emoji and text
+                emoji_match = re.match(r'^([^\w\s]+)\s*\*?\*?(.+?)\*?\*?$', header_text)
+                if emoji_match:
+                    emoji, title = emoji_match.groups()
+                    html_parts.append(f'<div class="section-header"><span class="section-emoji">{emoji}</span><h2 class="section-title">{title.strip()}</h2></div>')
+                else:
+                    html_parts.append(f'<h2 class="section-title">{header_text}</h2>')
             
-            for paper in papers:
-                html_parts.append('<div class="paper-card">')
-                # Paper title with link to arXiv
+            elif line.startswith('### '):
+                if in_list:
+                    html_parts.append(f'</{list_type}>')
+                    in_list = False
+                subsection_text = line[4:].strip()
+                # Extract emoji and text
+                emoji_match = re.match(r'^([^\w\s]+)\s*\*?\*?(.+?)\*?\*?$', subsection_text)
+                if emoji_match:
+                    emoji, title = emoji_match.groups()
+                    html_parts.append(f'<div class="subsection-header"><span class="subsection-emoji">{emoji}</span><h3 class="subsection-title">{title.strip()}</h3></div>')
+                else:
+                    html_parts.append(f'<h3 class="subsection-title">{subsection_text}</h3>')
+            
+            # Lists
+            elif line.startswith('- ') or line.startswith('• '):
+                if not in_list:
+                    html_parts.append('<ul class="research-list">')
+                    in_list = True
+                    list_type = 'ul'
+                list_content = line[2:].strip()
+                # Handle bold/italic formatting
+                list_content = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', list_content)
+                list_content = re.sub(r'\*(.+?)\*', r'<em>\1</em>', list_content)
+                html_parts.append(f'<li class="research-item">{list_content}</li>')
+            
+            elif re.match(r'^\d+\.\s+', line):
+                if not in_list:
+                    html_parts.append('<ol class="research-list numbered">')
+                    in_list = True
+                    list_type = 'ol'
+                list_content = re.sub(r'^\d+\.\s+', '', line)
+                # Handle bold/italic formatting
+                list_content = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', list_content)
+                list_content = re.sub(r'\*(.+?)\*', r'<em>\1</em>', list_content)
+                html_parts.append(f'<li class="research-item">{list_content}</li>')
+            
+            # Horizontal rule
+            elif line.startswith('---'):
+                if in_list:
+                    html_parts.append(f'</{list_type}>')
+                    in_list = False
+                html_parts.append('<hr class="section-divider"/>')
+            
+            # Next Steps highlight
+            elif line.startswith('**Next Steps'):
+                if in_list:
+                    html_parts.append(f'</{list_type}>')
+                    in_list = False
+                next_steps_text = re.sub(r'\*\*(.+?)\*\*:', r'<strong>\1</strong>:', line)
+                html_parts.append(f'<div class="next-steps-section">{next_steps_text}</div>')
+            
+            # Regular paragraphs
+            else:
+                if in_list:
+                    html_parts.append(f'</{list_type}>')
+                    in_list = False
+                # Handle bold/italic formatting
+                formatted_line = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', line)
+                formatted_line = re.sub(r'\*(.+?)\*', r'<em>\1</em>', formatted_line)
+                html_parts.append(f'<p class="research-text">{formatted_line}</p>')
+        
+        # Close any open lists
+        if in_list:
+            html_parts.append(f'</{list_type}>')
+        
+        # Add papers section if available
+        if papers:
+            html_parts.append('<div class="papers-showcase">')
+            html_parts.append('<div class="section-header"><span class="section-emoji">📚</span><h2 class="section-title">Related Research Papers</h2></div>')
+            
+            for i, paper in enumerate(papers[:5]):  # Show top 5 papers
+                html_parts.append('<div class="paper-card-enhanced">')
+                html_parts.append(f'<div class="paper-rank">#{i+1}</div>')
+                html_parts.append(f'<div class="paper-content">')
                 html_parts.append(f'<h4 class="paper-title"><a href="https://arxiv.org/abs/{paper["arxiv_id"]}" target="_blank">{paper["title"]}</a></h4>')
                 
-                # Authors with icons
-                html_parts.append('<div class="paper-authors">')
-                html_parts.append('<i class="fas fa-users"></i> ')
-                html_parts.append(f'<span>{", ".join(paper["authors"])}</span>')
+                # Authors
+                authors = paper.get("authors", [])
+                authors_display = ", ".join(authors[:3])
+                if len(authors) > 3:
+                    authors_display += " et al."
+                html_parts.append(f'<p class="paper-authors">👥 {authors_display}</p>')
+                
+                # Categories
+                categories = paper.get("categories", [])[:3]
+                html_parts.append('<div class="paper-tags">')
+                for cat in categories:
+                    html_parts.append(f'<span class="category-badge">{cat}</span>')
                 html_parts.append('</div>')
                 
-                # Categories with tags
-                html_parts.append('<div class="paper-categories">')
-                for category in paper["categories"]:
-                    html_parts.append(f'<span class="category-tag">{category}</span>')
-                html_parts.append('</div>')
+                # Relevance score
+                if paper.get("similarity", 0) > 0:
+                    relevance = paper["similarity"] * 100
+                    html_parts.append(f'<div class="relevance-indicator">🎯 {relevance:.0f}% relevant</div>')
                 
-                # Abstract with expandable section
-                html_parts.append('<div class="paper-abstract">')
-                html_parts.append('<details>')
-                html_parts.append('<summary>Abstract</summary>')
-                html_parts.append(f'<p>{paper["abstract"]}</p>')
-                html_parts.append('</details>')
-                html_parts.append('</div>')
-                
-                # Metadata section
-                html_parts.append('<div class="paper-metadata">')
-                if paper.get("published_date"):
-                    html_parts.append(f'<span class="date"><i class="far fa-calendar"></i> {paper["published_date"]}</span>')
-                if paper.get("doi"):
-                    html_parts.append(f'<span class="doi"><i class="fas fa-link"></i> <a href="https://doi.org/{paper["doi"]}" target="_blank">DOI</a></span>')
-                html_parts.append('</div>')
-                
-                # Similarity score if available
-                if "similarity" in paper:
-                    similarity = float(paper["similarity"])
-                    html_parts.append(f'<div class="similarity-score">Relevance: {similarity:.2%}</div>')
-                
-                html_parts.append('</div>')  # Close paper-card
-            html_parts.append('</div>')  # Close papers-list
-            html_parts.append('</div>')  # Close papers-section
-        
-        # Add insights if available
-        if intent.get("insights"):
-            html_parts.append('<div class="insights-section">')
-            html_parts.append('<h3 class="section-title">📊 Research Insights</h3>')
+                html_parts.append('</div>')  # paper-content
+                html_parts.append('</div>')  # paper-card-enhanced
             
-            if intent["insights"].get("trends"):
-                html_parts.append('<div class="trends">')
-                html_parts.append('<h4><i class="fas fa-chart-line"></i> Research Trends</h4>')
-                for trend_type, trend_data in intent["insights"]["trends"].items():
-                    html_parts.append(f'<div class="trend-category"><h5>{trend_type.title()}</h5>')
-                    html_parts.append('<ul class="trend-list">')
-                    for item, count in trend_data.items():
-                        html_parts.append(f'<li><span class="trend-item">{item}</span> <span class="trend-count">({count})</span></li>')
-                    html_parts.append('</ul></div>')
-                html_parts.append('</div>')
-            
-            if intent["insights"].get("gaps"):
-                html_parts.append('<div class="research-gaps">')
-                html_parts.append('<h4><i class="fas fa-lightbulb"></i> Research Gaps</h4>')
-                html_parts.append('<ul class="gaps-list">')
-                for gap in intent["insights"]["gaps"]:
-                    html_parts.append(f'<li>{gap}</li>')
-                html_parts.append('</ul>')
-                html_parts.append('</div>')
-            
-            html_parts.append('</div>')  # Close insights-section
+            html_parts.append('</div>')  # papers-showcase
         
-        # Add follow-up questions if available
-        if intent.get("follow_up_questions"):
-            html_parts.append('<div class="follow-up-section">')
-            html_parts.append('<h3 class="section-title">💡 Suggested Follow-up Questions</h3>')
-            html_parts.append('<ul class="follow-up-list">')
-            for question in intent["follow_up_questions"]:
-                html_parts.append(f'<li><i class="fas fa-arrow-right"></i> {question}</li>')
-            html_parts.append('</ul>')
-            html_parts.append('</div>')
-        
-        # Add CSS styles
+        # Enhanced CSS styles
         html_parts.append('''
         <style>
-            .chat-response {
+            .research-assistant-response {
                 font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-                line-height: 1.6;
-                color: #333;
+                line-height: 1.7;
+                color: #2d3748;
+                max-width: 100%;
+                padding: 1rem 0;
             }
+            
+            .section-header, .subsection-header {
+                display: flex;
+                align-items: center;
+                margin: 1.5rem 0 1rem 0;
+                gap: 0.5rem;
+            }
+            
+            .section-emoji, .subsection-emoji {
+                font-size: 1.25em;
+                filter: drop-shadow(0 1px 2px rgba(0,0,0,0.1));
+            }
+            
             .section-title {
-                color: #2c3e50;
-                border-bottom: 2px solid #eee;
-                padding-bottom: 0.5em;
-                margin-top: 1.5em;
+                font-size: 1.25rem;
+                font-weight: 700;
+                color: #1a202c;
+                margin: 0;
+                border-bottom: 2px solid #e2e8f0;
+                padding-bottom: 0.5rem;
+                flex-grow: 1;
             }
-            .paper-card {
-                background: #fff;
-                border: 1px solid #e1e4e8;
-                border-radius: 6px;
-                padding: 1.5em;
-                margin: 1em 0;
-                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            
+            .subsection-title {
+                font-size: 1.1rem;
+                font-weight: 600;
+                color: #2d3748;
+                margin: 0;
             }
+            
+            .research-list {
+                margin: 1rem 0;
+                padding-left: 1.5rem;
+            }
+            
+            .research-list.numbered {
+                list-style-type: decimal;
+            }
+            
+            .research-item {
+                margin: 0.75rem 0;
+                padding: 0.5rem 0;
+                line-height: 1.6;
+            }
+            
+            .research-item strong {
+                color: #2b6cb0;
+                font-weight: 600;
+            }
+            
+            .research-text {
+                margin: 1rem 0;
+                line-height: 1.7;
+            }
+            
+            .section-divider {
+                border: none;
+                height: 2px;
+                background: linear-gradient(90deg, #4f46e5, #7c3aed, #4f46e5);
+                margin: 2rem 0;
+                border-radius: 1px;
+            }
+            
+            .next-steps-section {
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                padding: 1.5rem;
+                border-radius: 12px;
+                margin: 1.5rem 0;
+                box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+            }
+            
+            .next-steps-section strong {
+                color: #fef9e7;
+            }
+            
+            .papers-showcase {
+                margin-top: 2rem;
+                padding: 1.5rem;
+                background: linear-gradient(135deg, #f8faff 0%, #f1f5f9 100%);
+                border-radius: 16px;
+                border: 1px solid #e2e8f0;
+            }
+            
+            .paper-card-enhanced {
+                display: flex;
+                align-items: flex-start;
+                gap: 1rem;
+                background: white;
+                padding: 1.25rem;
+                margin: 1rem 0;
+                border-radius: 12px;
+                border: 1px solid #e5e7eb;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+                transition: all 0.2s ease;
+            }
+            
+            .paper-card-enhanced:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 8px 20px rgba(0,0,0,0.12);
+                border-color: #3b82f6;
+            }
+            
+            .paper-rank {
+                background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+                color: white;
+                width: 32px;
+                height: 32px;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-weight: bold;
+                font-size: 0.9rem;
+                flex-shrink: 0;
+            }
+            
+            .paper-content {
+                flex-grow: 1;
+            }
+            
             .paper-title {
-                margin: 0 0 0.5em;
-                font-size: 1.2em;
+                margin: 0 0 0.5rem 0;
+                font-size: 1rem;
+                line-height: 1.4;
             }
+            
             .paper-title a {
-                color: #0366d6;
+                color: #1f2937;
                 text-decoration: none;
+                font-weight: 600;
             }
+            
             .paper-title a:hover {
+                color: #3b82f6;
                 text-decoration: underline;
             }
+            
             .paper-authors {
-                color: #586069;
-                margin-bottom: 0.5em;
+                color: #6b7280;
+                font-size: 0.9rem;
+                margin: 0.5rem 0;
             }
-            .category-tag {
+            
+            .paper-tags {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 0.5rem;
+                margin: 0.75rem 0;
+            }
+            
+            .category-badge {
+                background: #e0f2fe;
+                color: #0277bd;
+                padding: 0.25rem 0.75rem;
+                border-radius: 20px;
+                font-size: 0.8rem;
+                font-weight: 500;
+            }
+            
+            .relevance-indicator {
+                background: #f0fdf4;
+                color: #166534;
+                padding: 0.25rem 0.75rem;
+                border-radius: 6px;
+                font-size: 0.85rem;
+                font-weight: 500;
+                margin-top: 0.5rem;
                 display: inline-block;
-                background: #e1ecf4;
-                color: #39739d;
-                padding: 0.2em 0.6em;
-                border-radius: 3px;
-                margin: 0.2em;
-                font-size: 0.9em;
             }
-            .paper-abstract {
-                margin: 1em 0;
-            }
-            .paper-metadata {
-                color: #586069;
-                font-size: 0.9em;
-                margin-top: 1em;
-            }
-            .paper-metadata span {
-                margin-right: 1em;
-            }
-            .similarity-score {
-                background: #f1f8ff;
-                color: #0366d6;
-                padding: 0.3em 0.6em;
-                border-radius: 3px;
-                display: inline-block;
-                margin-top: 0.5em;
-            }
-            .trend-list, .gaps-list, .follow-up-list {
-                list-style: none;
-                padding-left: 0;
-            }
-            .trend-item {
-                color: #0366d6;
-            }
-            .trend-count {
-                color: #586069;
-                font-size: 0.9em;
-            }
-            .follow-up-list li {
-                margin: 0.5em 0;
-                padding-left: 1.5em;
-                position: relative;
-            }
-            .follow-up-list li i {
-                position: absolute;
-                left: 0;
-                color: #0366d6;
+            
+            /* Dark mode support */
+            @media (prefers-color-scheme: dark) {
+                .research-assistant-response {
+                    color: #e2e8f0;
+                }
+                
+                .section-title {
+                    color: #f7fafc;
+                    border-bottom-color: #4a5568;
+                }
+                
+                .subsection-title {
+                    color: #e2e8f0;
+                }
+                
+                .papers-showcase {
+                    background: linear-gradient(135deg, #1a202c 0%, #2d3748 100%);
+                    border-color: #4a5568;
+                }
+                
+                .paper-card-enhanced {
+                    background: #2d3748;
+                    border-color: #4a5568;
+                    color: #e2e8f0;
+                }
+                
+                .paper-title a {
+                    color: #e2e8f0;
+                }
+                
+                .paper-title a:hover {
+                    color: #63b3ed;
+                }
             }
         </style>
         ''')
         
-        html_parts.append('</div>')  # Close chat-response
+        html_parts.append('</div>')  # Close research-assistant-response
         
         return '\n'.join(html_parts)
     
