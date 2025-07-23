@@ -74,4 +74,3 @@ htmlcov/
 !.env.example 
 
 postgres
-scholar_crawler
