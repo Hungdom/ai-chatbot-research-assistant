@@ -4,6 +4,7 @@ import {
   ChatBubbleLeftRightIcon, 
   MagnifyingGlassIcon,
   ChartBarIcon,
+  BeakerIcon,
   SunIcon,
   MoonIcon
 } from '@heroicons/react/24/outline';
@@ -24,6 +25,11 @@ const navigation = [
     name: 'Dataset',
     href: '/dataset',
     icon: ChartBarIcon,
+  },
+  {
+    name: 'Metrics',
+    href: '/metrics',
+    icon: BeakerIcon,
   },
 ];
 

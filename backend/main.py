@@ -17,6 +17,7 @@ from sqlalchemy.sql import text
 from sqlalchemy import or_, select
 from agents.enhanced_chat_agent import EnhancedChatAgent
 from agents.smart_search_agent import SmartSearchAgent
+from evaluation.evaluation_service import EvaluationService
 
 # Configure logging
 logging.basicConfig(
@@ -62,6 +63,9 @@ chat_agent = ChatAgent()
 # Initialize enhanced agents
 enhanced_chat_agent = EnhancedChatAgent()
 smart_search_agent = SmartSearchAgent()
+
+# Initialize evaluation service
+evaluation_service = EvaluationService()
 
 # Request/Response Models
 class ChatMessage(BaseModel):
@@ -667,6 +671,94 @@ async def search_analytics():
     except Exception as e:
         logger.error(f"Search analytics error: {str(e)}", exc_info=True)
         return {"error": str(e)}
+
+# Metrics API Endpoints
+
+@app.get("/api/metrics/summary")
+async def get_metrics_summary():
+    """Get a quick summary of key chatbot metrics."""
+    try:
+        summary = await evaluation_service.get_metrics_summary()
+        return summary
+    except Exception as e:
+        logger.error(f"Error getting metrics summary: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/metrics/detailed")
+async def get_detailed_metrics(category: str = "all"):
+    """Get detailed metrics for a specific category (all, rag, performance, conversation)."""
+    try:
+        metrics = await evaluation_service.get_detailed_metrics(category)
+        return metrics
+    except Exception as e:
+        logger.error(f"Error getting detailed metrics: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/metrics/current")
+async def get_current_metrics(hours: int = 24):
+    """Get current metrics for the specified time range in hours."""
+    try:
+        if hours < 1 or hours > 168:  # Limit to 1 hour - 1 week
+            raise HTTPException(status_code=400, detail="Hours must be between 1 and 168 (1 week)")
+        
+        metrics = await evaluation_service.get_current_metrics(hours)
+        return metrics
+    except Exception as e:
+        logger.error(f"Error getting current metrics: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/metrics/historical")  
+async def get_historical_metrics(days: int = 7):
+    """Get historical metrics trends over multiple days."""
+    try:
+        if days < 1 or days > 30:  # Limit to 1-30 days
+            raise HTTPException(status_code=400, detail="Days must be between 1 and 30")
+        
+        metrics = await evaluation_service.get_historical_metrics(days)
+        return metrics
+    except Exception as e:
+        logger.error(f"Error getting historical metrics: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/metrics/definitions")
+async def get_metrics_definitions():
+    """Get definitions and explanations of all available metrics."""
+    try:
+        definitions = evaluation_service.get_metrics_definitions()
+        return definitions
+    except Exception as e:
+        logger.error(f"Error getting metrics definitions: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/metrics/session/{session_id}")
+async def get_session_metrics(session_id: str):
+    """Get metrics for a specific session."""
+    try:
+        metrics = await evaluation_service.get_session_metrics(session_id)
+        return metrics
+    except Exception as e:
+        logger.error(f"Error getting session metrics: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/metrics/clear-cache")
+async def clear_metrics_cache():
+    """Clear the metrics cache to force recalculation."""
+    try:
+        evaluation_service.clear_cache()
+        return {"message": "Metrics cache cleared successfully"}
+    except Exception as e:
+        logger.error(f"Error clearing metrics cache: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/metrics/optimization-stats")
+async def get_optimization_stats():
+    """Get API optimization statistics."""
+    try:
+        stats = evaluation_service.get_optimization_stats()
+        return stats
+    except Exception as e:
+        logger.error(f"Error getting optimization stats: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8001, reload=True) 

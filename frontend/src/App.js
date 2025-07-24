@@ -5,6 +5,7 @@ import Chat from './pages/Chat';
 import Home from './pages/Home';
 import Search from './pages/Search';
 import DatasetInsights from './pages/DatasetInsights';
+import ChatbotMetrics from './pages/ChatbotMetrics';
 import { ThemeProvider } from './context/ThemeContext';
 
 function App() {
@@ -18,6 +19,7 @@ function App() {
             <Route path="/chat/:sessionId" element={<Chat />} />
             <Route path="/search" element={<Search />} />
             <Route path="/dataset" element={<DatasetInsights />} />
+            <Route path="/metrics" element={<ChatbotMetrics />} />
           </Routes>
         </Layout>
       </Router>
